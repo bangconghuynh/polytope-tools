@@ -1,85 +1,144 @@
 """
 @module PolyhedronDrawingTools
+Module containing necessary classes and functions to draw three-dimensional
+intersecting polyhedra with careful treatment of hidden lines.
 """
 
 import sys
 import numpy as np
-# from sympy import sympify
 from sympy.geometry import Point, Line, Segment
 from sympy.vector import CoordSys3D
 
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
 
+# Constants
+ZERO_TOLERANCE = 1e-15
+
 class Point(object):
 
-    def __init__(self, object_coordinates=np.array([0,0,0])):
-        self.object_coordinates = np.array(object_coordinates)
-        while self.object_coordinates.shape[0] < 3:
-            self.object_coordinates = np.append(self.object_coordinates, axis=0)
+    def __init__(self, coordinates=np.array([0,0,0])):
+        self.coordinates = np.array(coordinates)
+        while self.coordinates.shape[0] < 3:
+            self.coordinates = np.append(self.coordinates, axis=0)
 
-    def get_object_coordinates(self):
-        return self.object_coordinates
+    def __str__(self):
+        return "Point({},{},{})".format(self.coordinates[0],\
+                self.coordinates[1], self.coordinates[2])
 
-    def set_object_coordinates(self, coords):
-        self.object_coordinates = coords
+    def __getitem__(self, key):
+        return self.coordinates[key]
+
+    def get_coordinates(self):
+        return self.coordinates
+
+    def set_coordinates(self, coords):
+        self.coordinates = coords
 
     def get_vector_to(self, other):
-        return Vector(other.object_coordinates-self.object_coordinates)
+        return Vector(other.coordinates-self.coordinates)
 
 
 class Vector(object):
 
-    def __init__(self, object_components=np.array([0,0,0])):
-        self.object_components = np.array(object_components)
-        while self.object_components.shape[0] < 3:
-            self.object_components = np.append(self.object_components, axis=0)
+    def __init__(self, components=np.array([0,0,0])):
+        self.components = np.array(components)
+        while self.components.shape[0] < 3:
+            self.components = np.append(self.components, axis=0)
+
+    def __str__(self):
+        return "Vector({},{},{})".format(self.components[0],\
+                self.components[1], self.components[2])
+
+    def __getitem__(self, key):
+        return self.components[key]
 
     def __add__(self, other):
-        return Vector(self.object_components+other.object_components)
+        return Vector(self.components+other.components)
 
     def __sub__(self, other):
-        return Vector(self.object_components-other.object_components)
-
-    def dot(self, other):
-        return np.dot(self.object_components, other.object_components)
-
-    def cross(self, other):
-        return  Vector(np.cross(self.object_components, other.object_components))
-
-    def __mul__(self, other):
-        return self.dot(other)
+        return Vector(self.components-other.components)
 
     def __neg__(self):
-        return Vector(-self.object_components)
+        return Vector(-self.components)
 
-    def abs(self):
-        return np.abs(self.object_components)
+    def __mul__(self, other):
+        if isinstance(other, Vector):
+            return self.dot(other)
+        else:
+            try:
+                return Vector(other*self.components)
+            except:
+                raise TypeError('{} is not a number or a Vector.'. format(other))
 
-    def get_object_components():
-        return self.object_components
+    __rmul__ = __mul__
 
-    def set_object_components(coords):
-        self.object_components = coords
+    def __truediv__(self, other):
+        try:
+            return Vector(self.components/other)
+        except:
+            raise TypeError('{} is not a number or a Vector.'. format(other))
 
-    def get_view_components():
-        return self.view_components
+    def dot(self, other):
+        return np.dot(self.components, other.components)
 
-    def set_view_components(coords):
-        self.view_components = coords
+    def cross(self, other):
+        return Vector(np.cross(self.components, other.components))
+
+    def get_norm(self):
+        return np.linalg.norm(self.components)
+
+    def normalise(self, thresh=ZERO_TOLERANCE):
+        norm = self.get_norm()
+        if norm < thresh:
+            raise ZeroDivisionError('{} has norm {} and is a null vector.'\
+                .format(self, norm))
+        else:
+            return self/self.get_norm()
+
+    def get_components(self):
+        return self.components
+
+    def set_components(coords):
+        self.components = coords
 
 
 class Line(object):
     def __init__(self, anchor, direction):
         self.anchor = anchor
-        self.direction = direction
+        self.direction = direction.normalise()
 
-    def check_parallel(self, other, thresh=1e-6):
-        if self.cross(other).abs() < thresh:
+    def __str__(self):
+        return "Line[{} + lambda*{}]".format(self.anchor, self.direction)
+
+    def is_parallel(self, other, thresh=ZERO_TOLERANCE):
+        if self.direction.cross(other.direction).get_norm() < thresh:
             return True
         else:
             return False
 
-    def check_contain(self, point, thresh=1e-6):
-        if point.get_vector_to(self.anchor).dot(self.direction) < 1e-6:
+    def contains_point(self, point, thresh=ZERO_TOLERANCE):
+        anchor_to_point = self.anchor.get_vector_to(point)
+        if anchor_to_point.get_norm() < thresh:
             return True
+        elif anchor_to_point.normalise().cross(self.direction).get_norm()\
+                < thresh:
+            return True
+        else:
+            return False
 
+    def intersects_line(self, other, thresh=ZERO_TOLERANCE):
+        if self.is_parallel(other, thresh):
+            if self.contains_point(other.anchor, thresh):
+                return (np.inf,)
+            else:
+                return(0,)
+        else:
+            interanchor = self.anchor.get_vector_to(other.anchor)
+            if interanchor.get_norm() < thresh:
+                return (1,)
+            else:
+                v = self.direction.cross(other.direction).normalise()
+                if interanchor.dot(v) < thresh:
+                    return (1,)
+                else:
+                    return (0,)
