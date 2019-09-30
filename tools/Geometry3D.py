@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""`PolyhedronDrawingTools` contains necessary classes and functions to draw
-three-dimensional intersecting polyhedra with careful treatment of hidden lines.
+"""`Geometry3D` contains classes for general three-dimensional
+geometrical objects.
 """
 
-import sys
 import numpy as np
+from scipy.spatial import ConvexHull
 
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
 
@@ -219,7 +219,7 @@ class Vector(object):
         norm = self.norm
         if norm < thresh:
             raise ZeroDivisionError('{} has norm {} and is a null vector.'\
-                .format(self, norm))
+                                    .format(self, norm))
         else:
             return self/self.norm
 
@@ -262,15 +262,16 @@ class Line(object):
 
         When a non-unit vector is supplied, it will be normalised automatically.
 
-        When a vector with more than one negative coefficient is supplied, its
-        negative will be taken.
+        When a vector with fewer positive coefficients than negative components
+        is supplied, its negative will be taken.
         """
         return self._direction
 
     @direction.setter
     def direction(self, vector):
-        pos_count = len([x for x in vector.components if x >= 0])
-        if pos_count >= 2:
+        pos_count = len([x for x in vector.components if x > 0])
+        neg_count = len([x for x in vector.components if x < 0])
+        if pos_count >= neg_count:
             self._direction = vector.normalise()
         else:
             self._direction = -vector.normalise()
@@ -374,6 +375,17 @@ class Line(object):
             else:
                 v = self.direction.cross(other.direction).normalise()
                 if abs(interanchor.dot(v)) < thresh: # shortest distance
+                    # Solving for lambda and mu in
+                    #     a1 + lambda*d1 = a2 + mu*d2
+                    # <=> lambda*d1 - mu*d2 = a2 - a1
+                    # <=> [d1 -d2] [lambda mu]T = a2 - a1
+                    # Three equations, two unknowns, i.e.
+                    # [d1 -d2] is a 3x2 rectangular matrix.
+                    # We solve for lambda and mu in all three pairs of
+                    # dimensions and check for consistency.
+                    # In some pairs, there might be no or infinitely
+                    # many solutions, hence singular matrices, hence
+                    # try-except blocks.
                     anchors = self.anchor.get_vector_to(other.anchor)
                     coeffs = []
                     try:
@@ -425,7 +437,7 @@ class Segment(object):
 
     Parameters
     ----------
-    endpoints : list of Point
+    endpoints : [Point]
         A list of two points defining the endpoints of the segment.
     """
 
@@ -434,7 +446,7 @@ class Segment(object):
 
     @property
     def endpoints(self):
-        """list of Point: A list of two points defining the endpoints of the segment.
+        """[Point]: A list of two points defining the endpoints of the segment.
         """
         return self._endpoints
 
@@ -547,11 +559,16 @@ class Segment(object):
             return n_line,intersection_line
         elif n_line == 1:
             if self.contains_point(intersection_line, thresh)\
-                and other.contains_point(intersection_line, thresh):
+                    and other.contains_point(intersection_line, thresh):
                 return 1,intersection_line
             else:
                 return 0,None
         else:
+            # Both segments on the same line.
+            # - No overlap.
+            # - Intersect at endpoints.
+            # - Partial overlap.
+            # - One segment lies entirely within the other.
             if self.contains_point(other.endpoints[0], thresh):
                 if self.contains_point(other.endpoints[1], thresh):
                     return np.inf,other
@@ -614,18 +631,19 @@ class Plane(object):
 
         When a non-unit vector is supplied, it will be normalised automatically.
 
-        When a vector with more than one negative coefficient is supplied, its
-        negative will be taken.
+        When a vector with fewer positive coefficients than negative components
+        is supplied, its negative will be taken.
         """
         return self._normal
 
     @normal.setter
     def normal(self, vector):
-        pos_count = len([x for x in vector.components if x >= 0])
-        if pos_count >= 2:
+        pos_count = len([x for x in vector.components if x > 0])
+        neg_count = len([x for x in vector.components if x < 0])
+        if pos_count >= neg_count:
             self._normal = vector.normalise()
         else:
-            self._normal = -vector.normalise()
+            self._normal = -(vector.normalise())
 
     @property
     def constant(self):
@@ -694,3 +712,99 @@ class Plane(object):
             lamb = (self.constant-adotn)/ddotn
             intersection = line.get_point(lamb)
             return 1,intersection
+
+    def intersects_plane(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current plane intersects `other`.
+
+        Parameters
+        ----------
+        other : Plane
+            A plane to check for intersection with the current plane.
+        thresh : `float`
+            Threshold to determine if two planes are parallel.
+
+        Returns
+        -------
+        n : int
+            Number of points of intersection.
+        intersection : None if `n` is zero, Line or Plane if `n` == `inf`
+            Intersection object.
+        """
+        n1crossn2 = self.normal.cross(other.normal)
+        if n1crossn2.norm < thresh:
+            if abs(self.constant - other.constant) < thresh:
+                return np.inf,self
+            else:
+                return 0,None
+        else:
+            constants = np.array([[self.constant],\
+                                  [other.constant]])
+            # If n1crossn2 is perpendicular to a Cartesian axis, then
+            # all points on the line have a fixed component w.r.t. that
+            # axis and we cannot choose that component arbitrarily.
+            # There must therefore be a unique solution in that component.
+            perpendicular_directions = []
+            for i in range(3):
+                if abs(n1crossn2[i]) < thresh:
+                    perpendicular_directions.append(i)
+            print(perpendicular_directions)
+            if len(perpendicular_directions) == 0:
+                # No restrictions. We pick z=0, then solve for x and y.
+                i,j,k = 0,1,2
+            elif len(perpendicular_directions) == 1:
+                # One perpendicular direction. We must include this
+                # in the 2D problem.
+                i = perpendicular_directions[0]
+                [j,k] = list(set(perpendicular_directions)^set(range(3)))
+            else:
+                # Two perpendicular directions. We must include both
+                # in the 2D problem.
+                i,j = perpendicular_directions[0],perpendicular_directions[1]
+                [k] = list(set(perpendicular_directions)^set(range(3)))
+            # Solving the 2D problem
+            normals_ij = np.array([[self.normal[i], self.normal[j]],\
+                                   [other.normal[i], other.normal[j]]])
+            ij = np.dot(np.linalg.inv(normals_ij), constants)
+            print(ij)
+            coords = np.array([0,0,0])
+            coords[i] = ij[0]
+            coords[j] = ij[1]
+            point_on_line = Point(coords)
+            assert self.contains_point(point_on_line, thresh) and\
+                   other.contains_point(point_on_line, thresh)
+            return np.inf,Line(point_on_line, n1crossn2)
+
+
+class Contour(object):
+    """A contour in a three-dimensional Euclidean space.
+
+    (Hsu & Hock, 1991) "A contour is a closed planar polygon that may be one
+    of ordered orientation."
+
+    Parameters
+    ----------
+    edges : [Segment]
+        A list of segments defining the edges of the contour. Any ordered
+        orientation is implied by the order of the list.
+    """
+
+    def __init__(self, edges):
+        self.edges = edges
+
+    @property
+    def edges(self):
+        """[Segment]: A list of segments defining the edges of the contour.
+        """
+        return self._edges
+
+    @edges.setter
+    def edges(self, edges):
+        self._edges = edges
+
+    @property
+    def associated_plane(self):
+        v1 = self.edges[0].associated_line.direction
+        v2 = self.edges[1].associated_line.direction
+        n = v1.cross(v2)
+        A = self.edges[0].endpoints[0]
+        return Plane(n, A)

@@ -1,14 +1,18 @@
 #!/usr/bin/python3 -m
 
-from .PolyhedronDrawingTools import Point, Vector, Line, Segment, Plane
+from .Geometry3D import Point, Vector, Line, Segment, Plane, Contour
 
 def main():
     A = Point([0,0,0])
-    B = Point([1,2,1])
-    n = Vector([0,0,1])
-    pnA = Plane(n, A)
-    l = Line(A, Vector([1,1,0]))
-    print(pnA.intersects_line(l))
+    B = Point([1,0,0])
+    C = Point([1,1,0])
+    D = Point([0,1,0])
+    sAB = Segment([A,B])
+    sBC = Segment([B,C])
+    sCD = Segment([C,D])
+    sDA = Segment([D,A])
+    cABCDA = Contour([sAB,sBC,sCD,sDA])
+    print(cABCDA.associated_plane)
 
 if __name__ == '__main__':
     main()
