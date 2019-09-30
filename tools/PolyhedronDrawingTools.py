@@ -117,6 +117,12 @@ class Vector(object):
         while self._components.shape[0] < 3:
             self._components = np.append(self._components, [0], axis=0)
 
+    @property
+    def norm(self):
+        """`float`: Frobenius norm of the current vector.
+        """
+        return np.linalg.norm(self.components)
+
     @classmethod
     def from_point(cls, point):
         """Create a position vector from a point.
@@ -197,22 +203,12 @@ class Vector(object):
         """
         return Vector(np.cross(self.components, other.components))
 
-    def get_norm(self):
-        """Find the norm of the current vector`.
-
-        Returns
-        -------
-        float
-            The norm of `self`.
-        """
-        return np.linalg.norm(self.components)
-
     def normalise(self, thresh=ZERO_TOLERANCE):
         """Normalise the current vector.
 
         Parameters
         ----------
-        thresh : float
+        thresh : `float`
             Threshold to consider if the current vector is the null vector.
 
         Returns
@@ -220,12 +216,12 @@ class Vector(object):
         Vector
             A unit vector parallel to the current vector.
         """
-        norm = self.get_norm()
+        norm = self.norm
         if norm < thresh:
             raise ZeroDivisionError('{} has norm {} and is a null vector.'\
                 .format(self, norm))
         else:
-            return self/self.get_norm()
+            return self/self.norm
 
 
 class Line(object):
@@ -248,7 +244,7 @@ class Line(object):
 
     def __init__(self, anchor, direction):
         self.anchor = anchor
-        self.direction = direction.normalise()
+        self.direction = direction
 
     @property
     def anchor(self):
@@ -263,12 +259,21 @@ class Line(object):
     @property
     def direction(self):
         """Vector: A vector parallel to the line.
+
+        When a non-unit vector is supplied, it will be normalised automatically.
+
+        When a vector with more than one negative coefficient is supplied, its
+        negative will be taken.
         """
         return self._direction
 
     @direction.setter
     def direction(self, vector):
-        self._direction = vector
+        pos_count = len([x for x in vector.components if x >= 0])
+        if pos_count >= 2:
+            self._direction = vector.normalise()
+        else:
+            self._direction = -vector.normalise()
 
     def __str__(self):
         return "Line[{} + lambda*{}]".format(self.anchor, self.direction)
@@ -284,7 +289,7 @@ class Line(object):
 
         Parameters
         ----------
-        param : float
+        param : `float`
             A real parameter specifying the point to be returned.
 
         Returns
@@ -302,28 +307,28 @@ class Line(object):
         ----------
         other : Line
             A line to check for parallelism with the current line.
-        thresh : float
+        thresh : `float`
             Threshold to determine if the cross product between the two
             vectors is the null vector.
 
         Returns
         -------
-        bool
+        `bool`
             `True` if the two lines are parallel, `False` if not.
         """
-        if self.direction.cross(other.direction).get_norm() < thresh:
+        if self.direction.cross(other.direction).norm < thresh:
             return True
         else:
             return False
 
     def contains_point(self, point, thresh=ZERO_TOLERANCE):
-        """Check if `point` lines on the current line.
+        """Check if `point` lies on the current line.
 
         Parameters
         ----------
         point : Point
             A point to check for collinearity with the current line.
-        thresh : float
+        thresh : `float`
             Threshold to determine if the perpendicular distance between
             `point` and the current line is zero.
 
@@ -333,7 +338,7 @@ class Line(object):
             `True` if `point` lies on the current line, `False` if not.
         """
         anchor_to_point = self.anchor.get_vector_to(point)
-        if anchor_to_point.cross(self.direction).get_norm()\
+        if anchor_to_point.cross(self.direction).norm\
                 < thresh:
             return True
         else:
@@ -345,26 +350,27 @@ class Line(object):
         Parameters
         ----------
         other : Line
-            A line to check for parallelism with the current line.
-        thresh : float
+            A line to check for intersection with the current line.
+        thresh : `float`
             Threshold to determine if the shortest distance between the two
             lines is zero.
 
         Returns
         -------
-        n : int
+        n : `int`
             Number of points of intersection.
-        l : list of Point. If `n` is zero or inf, `l` is an empty list.
+        intersection : None if `n` is zero, Point if `n` == 1, Line if `n` == `inf`
+            Intersection object.
         """
         if self.is_parallel(other, thresh):
             if self.contains_point(other.anchor, thresh):
-                return np.inf,[]
+                return np.inf,self
             else:
-                return 0,[]
+                return 0,None
         else:
             interanchor = self.anchor.get_vector_to(other.anchor)
-            if interanchor.get_norm() < thresh:
-                return 1,[self.anchor]
+            if interanchor.norm < thresh:
+                return 1,self.anchor
             else:
                 v = self.direction.cross(other.direction).normalise()
                 if abs(interanchor.dot(v)) < thresh: # shortest distance
@@ -401,7 +407,291 @@ class Line(object):
                     point_on_self = self.get_point(coeffs[0][0])
                     point_on_other = other.get_point(coeffs[0][1])
                     point_diff = point_on_self.get_vector_to(point_on_other)
-                    assert point_diff.get_norm() < thresh
-                    return 1,[point_on_self]
+                    assert point_diff.norm < thresh
+                    return 1,point_on_self
                 else:
-                    return 0,[]
+                    return 0,None
+
+
+class Segment(object):
+    """A line segment in a three-dimensional Euclidean space.
+
+    Mathematically, this line is a collection of all points satisfying
+    the vector equation
+
+        point = `anchor` + param * `direction`
+
+    where param is a real parameter in a specified interval.
+
+    Parameters
+    ----------
+    endpoints : list of Point
+        A list of two points defining the endpoints of the segment.
+    """
+
+    def __init__(self, endpoints):
+        self.endpoints = endpoints
+
+    @property
+    def endpoints(self):
+        """list of Point: A list of two points defining the endpoints of the segment.
+        """
+        return self._endpoints
+
+    @endpoints.setter
+    def endpoints(self, endpoints):
+        self._endpoints = endpoints
+
+    @property
+    def length(self):
+        """`float`: Length of the current segment.
+        """
+        return np.linalg.norm(self.endpoints[0].get_vector_to(self.endpoints[1]))
+
+    @property
+    def associated_line(self):
+        """Line: The line containing this segment.
+        """
+        direction = self.endpoints[0].get_vector_to(self.endpoints[1])
+        return Line(self.endpoints[0], direction)
+
+    def __str__(self):
+        return "Segment[{}, {}]".format(self.endpoints[0], self.endpoints[1])
+
+    __repr__ = __str__
+
+    def contains_point(self, point, thresh=ZERO_TOLERANCE):
+        """Check if `point` lines on the current segment.
+
+        Parameters
+        ----------
+        point : Point
+            A point to check for membership of the current segment.
+        thresh : `float`
+            Threshold to determine if the perpendicular distance between
+            `point` and the line containing this segment is zero.
+
+        Returns
+        -------
+        `bool`
+            `True` if `point` lies on the current segment, `False` if not.
+        """
+        if self.associated_line.contains_point(point, thresh):
+            AP = self.endpoints[0].get_vector_to(point)
+            BP = self.endpoints[1].get_vector_to(point)
+            if AP.norm < thresh or BP.norm < thresh:
+                return True
+            AB = self.endpoints[0].get_vector_to(self.endpoints[1])
+            for i in range(3):
+                if abs(AB[i]) >= thresh:
+                    ratio = AP[i]/AB[i]
+                    break
+            for i in range(3):
+                assert (abs(AP[i]-ratio*AB[i]) < thresh)
+            if -thresh <= ratio and ratio <= 1.0+thresh:
+                return True
+            else:
+                return False
+        else:
+            return False
+
+    def intersects_line(self, line, thresh=ZERO_TOLERANCE):
+        """Check if the current segment intersects `line`.
+
+        Parameters
+        ----------
+        line : Line
+            A line to check for intersection with the current segment.
+        thresh : `float`
+            Threshold to determine if the shortest distance between the line
+            and the current segment is zero.
+
+        Returns
+        -------
+        n : int
+            Number of points of intersection.
+        intersection : None if `n` is zero, Point if `n` == 1, Segment if `n` == `inf`
+            Intersection object.
+        """
+        n_line,intersection_line = self.associated_line.intersects_line(line, thresh)
+        if n_line == 0:
+            return 0,None
+        elif n_line == 1:
+            if self.contains_point(intersection_line, thresh):
+                return 1,intersection_line
+            else:
+                return 0,None
+        else:
+            return np.inf,self
+
+    def intersects_segment(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current segment intersects `other`.
+
+        Parameters
+        ----------
+        other : Segment
+            A segment to check for intersection with the current segment.
+        thresh : `float`
+            Threshold to determine if the shortest distance between the two
+            segments is zero.
+
+        Returns
+        -------
+        n : int
+            Number of points of intersection.
+        intersection : None if `n` is zero, Point if `n` == 1, Segment if `n` == `inf`
+            Intersection object.
+        """
+        n_line,intersection_line = self.intersects_line(other.associated_line, thresh)
+        if n_line == 0:
+            return n_line,intersection_line
+        elif n_line == 1:
+            if self.contains_point(intersection_line, thresh)\
+                and other.contains_point(intersection_line, thresh):
+                return 1,intersection_line
+            else:
+                return 0,None
+        else:
+            if self.contains_point(other.endpoints[0], thresh):
+                if self.contains_point(other.endpoints[1], thresh):
+                    return np.inf,other
+                else:
+                    if other.contains_point(self.endpoints[0], thresh):
+                        intersection = Segment([self.endpoints[0],other.endpoints[0]])
+                        if intersection.length < thresh:
+                            return 1,self.endpoints[0]
+                        else:
+                            return np.inf,intersection
+                    else:
+                        assert other.contains_point(self.endpoints[1], thresh)
+                        intersection = Segment([self.endpoints[1],other.endpoints[0]])
+                        if intersection.length < thresh:
+                            return 1,self.endpoints[1]
+                        else:
+                            return np.inf,intersection
+            elif self.contains_point(other.endpoints[1], thresh):
+                if other.contains_point(self.endpoints[0], thresh):
+                    intersection = Segment([self.endpoints[0],other.endpoints[1]])
+                    if intersection.length < thresh:
+                        return 1,self.endpoints[0]
+                    else:
+                        return np.inf,intersection
+                else:
+                    assert other.contains_point(self.endpoints[1], thresh)
+                    intersection = Segment([self.endpoints[1],other.endpoints[1]])
+                    if intersection.length < thresh:
+                        return 1,self.endpoints[1]
+                    else:
+                        return np.inf,intersection
+            else:
+                return 0,None
+
+
+class Plane(object):
+    """A plane in a three-dimensional Euclidean space.
+
+    Mathematically, this plane is a collection of all points satisfying
+    the vector equation
+
+        `point` . `normal` = `constant`
+
+    Parameters
+    ----------
+    normal : Vector
+        A vector normal to the plane.
+    point : Point
+        A point on the plane.
+    """
+
+    def __init__(self, normal, point):
+        self.normal = normal
+        self.constant = Vector.from_point(point).dot(self.normal)
+
+    @property
+    def normal(self):
+        """Vector: The unit vector normal to the plane with the largest number
+        of positive coefficients.
+
+        When a non-unit vector is supplied, it will be normalised automatically.
+
+        When a vector with more than one negative coefficient is supplied, its
+        negative will be taken.
+        """
+        return self._normal
+
+    @normal.setter
+    def normal(self, vector):
+        pos_count = len([x for x in vector.components if x >= 0])
+        if pos_count >= 2:
+            self._normal = vector.normalise()
+        else:
+            self._normal = -vector.normalise()
+
+    @property
+    def constant(self):
+        """`float`: The constant in the vector equation corresponding to the
+        unit vector normal to the plane with the largest number of positive
+        coefficients.
+        """
+        return self._constant
+
+    @constant.setter
+    def constant(self, value):
+        self._constant = value
+
+    def __str__(self):
+        return "Plane[r.{}={}]".format(self.normal, self.constant)
+
+    __repr__ = __str__
+
+    def contains_point(self, point, thresh=ZERO_TOLERANCE):
+        """Check if `point` lies on the current plane.
+
+        Parameters
+        ----------
+        point : Point
+            A point to check for membership with the current plane.
+        thresh : `float`
+            Threshold to determine if the coordinates of `point` satisfy the
+            the plane equation.
+
+        Returns
+        -------
+        bool
+            `True` if `point` lies on the current plane, `False` if not.
+        """
+        rdotn = Vector.from_point(point).dot(self.normal)
+        if abs(rdotn - self.constant) < thresh:
+            return True
+        else:
+            return False
+
+    def intersects_line(self, line, thresh=ZERO_TOLERANCE):
+        """Check if the current plane intersects `line`.
+
+        Parameters
+        ----------
+        line : Line
+            A line to check for intersection with the current plane.
+        thresh : `float`
+            Threshold to determine if the shortest distance between the line
+            and the current segment is zero.
+
+        Returns
+        -------
+        n : int
+            Number of points of intersection.
+        intersection : None if `n` is zero, Point if `n` == 1, Line if `n` == `inf`
+            Intersection object.
+        """
+        ddotn = line.direction.dot(self.normal)
+        if ddotn < thresh:
+            if self.contains_point(line.anchor):
+                return np.inf,line
+            else:
+                return 0,None
+        else:
+            adotn = Vector.from_point(line.anchor).dot(self.normal)
+            lamb = (self.constant-adotn)/ddotn
+            intersection = line.get_point(lamb)
+            return 1,intersection
