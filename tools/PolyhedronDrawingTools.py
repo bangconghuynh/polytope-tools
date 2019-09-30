@@ -674,8 +674,7 @@ class Plane(object):
         line : Line
             A line to check for intersection with the current plane.
         thresh : `float`
-            Threshold to determine if the shortest distance between the line
-            and the current segment is zero.
+            Threshold to determine if `line` is parallel to the current plane.
 
         Returns
         -------
