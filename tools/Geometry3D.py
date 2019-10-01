@@ -11,7 +11,44 @@ from scipy.spatial import ConvexHull
 # Constants
 ZERO_TOLERANCE = 1e-15
 
-class Point(object):
+class GeometryObject(object):
+    """A generic geometrical object in a three-dimensional Euclidean space.
+    """
+
+    @property
+    def bounding_box(self):
+        """[(`float`,`float`)]: A list of three tuples for the x, y, and z
+        dimensions. Each tuple contains the minimum and maximum coordinates
+        in the corresponding dimension.
+        """
+        return self._bounding_box
+
+    @bounding_box.setter
+    def bounding_box(self, bb):
+        assert len(bb) == 3, 'A list of three tuples must be supplied.'
+        for i in range(3):
+            assert type(bb[i]) is tuple,\
+                   'A list of three tuples must be supplied.'
+        self._bounding_box = bb
+
+    def _find_bounding_box(self):
+        """Find the bounding box of the current geometrical object."
+        """
+        print("find_bounding_box must be implemented in the child class.")
+
+    def intersects_bounding_box(self, other, thresh=ZERO_TOLERANCE):
+        if (self.bounding_box[0][0] > other.bounding_box[0][1] or\
+            self.bounding_box[0][1] < other.bounding_box[0][0]) and\
+           (self.bounding_box[1][0] > other.bounding_box[1][1] or\
+            self.bounding_box[1][1] < other.bounding_box[1][0]) and\
+           (self.bounding_box[2][0] > other.bounding_box[2][1] or\
+            self.bounding_box[2][1] < other.bounding_box[2][0]):
+            return False
+        else:
+            return True
+
+
+class Point(GeometryObject):
     """A point in a three-dimensional Euclidean space.
 
     Parameters
@@ -24,6 +61,7 @@ class Point(object):
         """Create a point from a set of coordinate values.
         """
         self.coordinates = np.array(coordinates)
+        self._find_bounding_box()
 
     @property
     def coordinates(self):
@@ -84,8 +122,11 @@ class Point(object):
         """
         return Vector(other.coordinates-self.coordinates)
 
+    def _find_bounding_box(self):
+        self.bounding_box = [(self[0],self[0]),(self[1],self[1]),(self[2],self[2])]
 
-class Vector(object):
+
+class Vector(GeometryObject):
     """A vector in a three-dimensional Euclidean space.
 
     Parameters
@@ -224,7 +265,7 @@ class Vector(object):
             return self/self.norm
 
 
-class Line(object):
+class Line(GeometryObject):
     """A line in a three-dimensional Euclidean space.
 
     Mathematically, this line is a collection of all points satisfying
@@ -361,7 +402,7 @@ class Line(object):
         n : `int`
             Number of points of intersection.
         intersection : None if `n` is zero, Point if `n` == 1, Line if `n` == `inf`
-            Intersection object.
+            GeometryObject.
         """
         if self.is_parallel(other, thresh):
             if self.contains_point(other.anchor, thresh):
@@ -425,7 +466,7 @@ class Line(object):
                     return 0,None
 
 
-class Segment(object):
+class Segment(GeometryObject):
     """A line segment in a three-dimensional Euclidean space.
 
     Mathematically, this line is a collection of all points satisfying
@@ -443,6 +484,7 @@ class Segment(object):
 
     def __init__(self, endpoints):
         self.endpoints = endpoints
+        self._find_bounding_box()
 
     @property
     def endpoints(self):
@@ -459,6 +501,12 @@ class Segment(object):
         """`float`: Length of the current segment.
         """
         return np.linalg.norm(self.endpoints[0].get_vector_to(self.endpoints[1]))
+
+    @property
+    def vector(self):
+        """Vector: Vector corresponding to the current segment.
+        """
+        return self.endpoints[0].get_vector_to(self.endpoints[1])
 
     @property
     def associated_line(self):
@@ -523,7 +571,7 @@ class Segment(object):
         n : int
             Number of points of intersection.
         intersection : None if `n` is zero, Point if `n` == 1, Segment if `n` == `inf`
-            Intersection object.
+            GeometryObject.
         """
         n_line,intersection_line = self.associated_line.intersects_line(line, thresh)
         if n_line == 0:
@@ -552,7 +600,7 @@ class Segment(object):
         n : int
             Number of points of intersection.
         intersection : None if `n` is zero, Point if `n` == 1, Segment if `n` == `inf`
-            Intersection object.
+            GeometryObject.
         """
         n_line,intersection_line = self.intersects_line(other.associated_line, thresh)
         if n_line == 0:
@@ -603,8 +651,17 @@ class Segment(object):
             else:
                 return 0,None
 
+    def _find_bounding_box(self):
+        xmin = min(self.endpoints[0][0], self.endpoints[1][0])
+        ymin = min(self.endpoints[0][1], self.endpoints[1][1])
+        zmin = min(self.endpoints[0][2], self.endpoints[1][2])
+        xmax = max(self.endpoints[0][0], self.endpoints[1][0])
+        ymax = max(self.endpoints[0][1], self.endpoints[1][1])
+        zmax = max(self.endpoints[0][2], self.endpoints[1][2])
+        self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
 
-class Plane(object):
+
+class Plane(GeometryObject):
     """A plane in a three-dimensional Euclidean space.
 
     Mathematically, this plane is a collection of all points satisfying
@@ -699,7 +756,7 @@ class Plane(object):
         n : int
             Number of points of intersection.
         intersection : None if `n` is zero, Point if `n` == 1, Line if `n` == `inf`
-            Intersection object.
+            GeometryObject.
         """
         ddotn = line.direction.dot(self.normal)
         if ddotn < thresh:
@@ -728,7 +785,7 @@ class Plane(object):
         n : int
             Number of points of intersection.
         intersection : None if `n` is zero, Line or Plane if `n` == `inf`
-            Intersection object.
+            GeometryObject.
         """
         n1crossn2 = self.normal.cross(other.normal)
         if n1crossn2.norm < thresh:
@@ -775,7 +832,7 @@ class Plane(object):
             return np.inf,Line(point_on_line, n1crossn2)
 
 
-class Contour(object):
+class Contour(GeometryObject):
     """A contour in a three-dimensional Euclidean space.
 
     (Hsu & Hock, 1991) "A contour is a closed planar polygon that may be one
@@ -790,6 +847,7 @@ class Contour(object):
 
     def __init__(self, edges):
         self.edges = edges
+        self._find_bounding_box()
 
     @property
     def edges(self):
@@ -799,12 +857,106 @@ class Contour(object):
 
     @edges.setter
     def edges(self, edges):
+        assert len(edges) >= 3, 'A contour requires a minimum of three edges.'
+        v1 = edges[0].vector
+        v2 = edges[1].vector
+        p = Plane(v1.cross(v2), edges[0].endpoints[0])
+        for edge in edges[2:]:
+            assert p.intersects_line(edge.associated_line)[0] == np.inf,\
+                   'All edges must be coplanar.'
         self._edges = edges
 
     @property
     def associated_plane(self):
+        """Plane: The plane containing this contour.
+        """
         v1 = self.edges[0].associated_line.direction
         v2 = self.edges[1].associated_line.direction
         n = v1.cross(v2)
         A = self.edges[0].endpoints[0]
         return Plane(n, A)
+
+    def is_coplanar(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current contour is coplanar with `other`.
+
+        Parameters
+        ----------
+        other : Contour
+            A contour to check for coplanarity with the current contour.
+        thresh : `float`
+            Threshold to determine if two contours are parallel.
+
+        Returns
+        -------
+        bool
+            `True` if `other` is coplanar with the current contour,
+            `False` if not.
+        """
+        self_plane = self.associated_plane
+        other_plane = other.associated_plane
+        n1crossn2 = self_plane.normal.cross(other_plane.normal)
+        if n1crossn2.norm < thresh:
+            if abs(self_plane.constant - other_plane.constant) < thresh:
+                return True
+            else:
+                return False
+        else:
+            return False
+
+    def _find_bounding_box(self):
+        xs = [edge.endpoints[i][0] for edge in self.edges for i in [0,1]]
+        ys = [edge.endpoints[i][1] for edge in self.edges for i in [0,1]]
+        zs = [edge.endpoints[i][2] for edge in self.edges for i in [0,1]]
+        xmin = min(xs)
+        ymin = min(ys)
+        zmin = min(zs)
+        xmax = max(xs)
+        ymax = max(ys)
+        zmax = max(zs)
+        self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
+
+
+class Facet(GeometryObject):
+    """A facet in a three-dimensional Euclidean space.
+
+    (Hsu & Hock, 1991) "A facet is specified by one or more contours that
+    are coplanar."
+
+    Parameters
+    ----------
+    countours : [segment]
+        A list of contours defining the facet.
+    """
+
+    def __init__(self, contours):
+        self.contours = contours
+        self._find_bounding_box()
+
+    @property
+    def contours(self):
+        """[Contour]: A list of contours defining the facet.
+        """
+        return self._contours
+
+    @contours.setter
+    def contours(self, contours):
+        if len(contours) > 1:
+            for contour in contours[1:]:
+                assert contours[0].is_coplanar(contour),\
+                    "All contours must be coplanar."
+        self._contours = contours
+
+    @property
+    def associated_plane(self):
+        """Plane: The plane containing this facet.
+        """
+        return self.contours[0].associated_plane
+
+    def _find_bounding_box(self):
+        xmin = min([contour.bounding_box[0][0] for contour in self.contours])
+        ymin = min([contour.bounding_box[1][0] for contour in self.contours])
+        zmin = min([contour.bounding_box[2][0] for contour in self.contours])
+        xmax = max([contour.bounding_box[0][1] for contour in self.contours])
+        ymax = max([contour.bounding_box[1][1] for contour in self.contours])
+        zmax = max([contour.bounding_box[2][1] for contour in self.contours])
+        self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
