@@ -6,4 +6,4 @@ API Reference
 .. autosummary::
     :toctree: _autosummary
 
-    tools.PolyhedronDrawingTools
+    tools.Geometry3D

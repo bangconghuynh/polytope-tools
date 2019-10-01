@@ -1,7 +1,8 @@
-tools.PolyhedronDrawingTools
-============================
+tools.Geometry3D
+================
 
-.. automodule:: tools.PolyhedronDrawingTools
+.. automodule:: tools.Geometry3D
+
    
    
    
@@ -12,6 +13,10 @@ tools.PolyhedronDrawingTools
 
    .. autosummary::
    
+      Contour
+      ConvexHull
+      Facet
+      FiniteObject
       Line
       Plane
       Point

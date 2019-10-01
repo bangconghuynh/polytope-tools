@@ -36,7 +36,6 @@ extensions = [\
         'sphinx.ext.napoleon',\
         'sphinx.ext.coverage',\
         'sphinx.ext.autosummary',\
-        'autodocsumm',\
         'sphinx_rtd_theme'
 ]
 

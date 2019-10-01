@@ -1,9 +1,9 @@
-# -*- coding: utf-8 -*-
 """`Geometry3D` contains classes for general three-dimensional
 geometrical objects.
 """
 
 import numpy as np
+import operator
 from scipy.spatial import ConvexHull
 
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
@@ -11,8 +11,9 @@ from scipy.spatial import ConvexHull
 # Constants
 ZERO_TOLERANCE = 1e-15
 
-class GeometryObject(object):
-    """A generic geometrical object in a three-dimensional Euclidean space.
+class FiniteObject(object):
+    """A generic finite geometrical object in a three-dimensional Euclidean space.
+    Each finite object has a bounding box.
     """
 
     @property
@@ -31,24 +32,39 @@ class GeometryObject(object):
                    'A list of three tuples must be supplied.'
         self._bounding_box = bb
 
+    @property
+    def bounding_box_planes(self):
+        """[(Plane,Plane)]: A list of three tuples for the x, y, and z
+        dimensions. Each tuple contains the planes at the minimum and maximum
+        coordinates in the corresponding dimension.
+        """
+        [(xmin,xmax),(ymin,ymax),(zmin,zmax)] = self.bounding_box
+        xmin_plane = Plane(Vector([1,0,0]), Point([xmin,0,0]))
+        xmax_plane = Plane(Vector([1,0,0]), Point([xmax,0,0]))
+        ymin_plane = Plane(Vector([0,1,0]), Point([ymin,0,0]))
+        ymax_plane = Plane(Vector([0,1,0]), Point([ymax,0,0]))
+        zmin_plane = Plane(Vector([0,0,1]), Point([zmin,0,0]))
+        zmax_plane = Plane(Vector([0,0,1]), Point([zmax,0,0]))
+        return [(xmin_plane,xmax_plane),(ymin_plane,ymax_plane),(zmin_plane,zmax_plane)]
+
     def _find_bounding_box(self):
         """Find the bounding box of the current geometrical object."
         """
         print("find_bounding_box must be implemented in the child class.")
 
     def intersects_bounding_box(self, other, thresh=ZERO_TOLERANCE):
-        if (self.bounding_box[0][0] > other.bounding_box[0][1] or\
-            self.bounding_box[0][1] < other.bounding_box[0][0]) and\
-           (self.bounding_box[1][0] > other.bounding_box[1][1] or\
-            self.bounding_box[1][1] < other.bounding_box[1][0]) and\
-           (self.bounding_box[2][0] > other.bounding_box[2][1] or\
-            self.bounding_box[2][1] < other.bounding_box[2][0]):
+        if self.bounding_box[0][0] > other.bounding_box[0][1] or\
+           self.bounding_box[0][1] < other.bounding_box[0][0] or\
+           self.bounding_box[1][0] > other.bounding_box[1][1] or\
+           self.bounding_box[1][1] < other.bounding_box[1][0] or\
+           self.bounding_box[2][0] > other.bounding_box[2][1] or\
+           self.bounding_box[2][1] < other.bounding_box[2][0]:
             return False
         else:
             return True
 
 
-class Point(GeometryObject):
+class Point(FiniteObject):
     """A point in a three-dimensional Euclidean space.
 
     Parameters
@@ -118,15 +134,80 @@ class Point(GeometryObject):
         Returns
         -------
         Vector
-            Displacement from the current point to `other`
+            Displacement from the current point to `other`.
         """
         return Vector(other.coordinates-self.coordinates)
+
+    def is_same_point(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current point is the same as `other`.
+
+        Parameters
+        ----------
+        point : Point
+            A point in the same Euclidean space.
+        thresh : `float`
+            Threshold to consider if the distance between the two points is zero.
+
+        Returns
+        -------
+        `bool`
+            `True` if the two points are the same, `False` if not.
+        """
+        return self.get_vector_to(other).norm < thresh
+
+    def is_inside_contour(self, contour, thresh=ZERO_TOLERANCE):
+        """Check if the current point lies inside the contour `contour`.
+
+        Parameters
+        ----------
+        contour : Contour
+            A contour in the same Euclidean space.
+        thresh : `float`
+            Threshold to consider if the current vector is the null vector.
+
+        Returns
+        -------
+        `bool`
+            `True` if the current point lies inside `contour`, `False` if not.
+        """
+        if contour.associated_plane.contains_point(self, thresh):
+            if self.intersects_bounding_box(contour, thresh):
+                for edge in contour.edges:
+                    if edge.contains_point(self, thresh):
+                        return True
+                edge_midpoint = contour.edges[0].midpoint
+                l = Segment([self,edge_midpoint]).associated_line
+                bounding_planes_flattened  = [plane for planes in contour.bounding_box_planes for plane in planes]
+                for p in bounding_planes_flattened:
+                    n,intersection = p.intersects_line(l, thresh)
+                    if n == 1:
+                        if intersection.is_same_point(self, thresh):
+                            continue
+                        else:
+                            break
+                    else:
+                        continue
+                test_segment = Segment([self,intersection])
+                print(intersection.is_same_point(self, thresh)) 
+                print(self,contour)
+                n_intersections_with_edges = 0
+                for edge in contour.edges:
+                    if test_segment.intersects_segment(edge, thresh)[0] == 1:
+                        n_intersections_with_edges += 1
+                if n_intersections_with_edges % 2 == 0:
+                    return False
+                else:
+                    return True
+            else:
+                return False
+        else:
+            return False
 
     def _find_bounding_box(self):
         self.bounding_box = [(self[0],self[0]),(self[1],self[1]),(self[2],self[2])]
 
 
-class Vector(GeometryObject):
+class Vector(object):
     """A vector in a three-dimensional Euclidean space.
 
     Parameters
@@ -265,7 +346,7 @@ class Vector(GeometryObject):
             return self/self.norm
 
 
-class Line(GeometryObject):
+class Line(object):
     """A line in a three-dimensional Euclidean space.
 
     Mathematically, this line is a collection of all points satisfying
@@ -376,7 +457,7 @@ class Line(GeometryObject):
 
         Returns
         -------
-        bool
+        `bool`
             `True` if `point` lies on the current line, `False` if not.
         """
         anchor_to_point = self.anchor.get_vector_to(point)
@@ -385,6 +466,38 @@ class Line(GeometryObject):
             return True
         else:
             return False
+
+    def find_parameter_for_point(self, point, thresh=ZERO_TOLERANCE):
+        """Determine the parameter of the line equation corresponding
+        to `point`.
+
+        Parameters
+        ----------
+        point : Point
+            A point in space.
+        thresh : `float`
+            Threshold to determine if the perpendicular distance between
+            `point` and the current line is zero.
+
+        Returns
+        -------
+        `float`
+            Parameter of the current line corresponding to `point.`
+            If `point` does not lie on the current line, `nan` will be returned.
+        """
+        if self.contains_point(point, thresh):
+            anchor_to_point = self.anchor.get_vector_to(point)
+            lambdas = []
+            for i in range(3):
+                if self.direction[i] >= thresh:
+                    lambdas.append(anchor_to_point[i]/self.direction[i])
+            assert len(lambdas) >= 1
+            if len(lambdas) > 1:
+                for i in range(len(lambdas-1)):
+                    assert abs(lambdas[i]-lambdas[i+1]) < thresh
+            return lambdas[0]
+        else:
+            return np.nan
 
     def intersects_line(self, other, thresh=ZERO_TOLERANCE):
         """Check if the current line intersects `other`.
@@ -402,7 +515,7 @@ class Line(GeometryObject):
         n : `int`
             Number of points of intersection.
         intersection : None if `n` is zero, Point if `n` == 1, Line if `n` == `inf`
-            GeometryObject.
+            FiniteObject.
         """
         if self.is_parallel(other, thresh):
             if self.contains_point(other.anchor, thresh):
@@ -465,8 +578,28 @@ class Line(GeometryObject):
                 else:
                     return 0,None
 
+    def is_same_line(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current line is the same line as `other`.
 
-class Segment(GeometryObject):
+        Parameters
+        ----------
+        other : Line
+            A line to check for identicality with the current line.
+        thresh : `float`
+            Threshold to determine if the shortest distance between the two
+            lines is zero.
+
+        Returns
+        -------
+        `bool`
+            `True` if `other` is the same as the current line, `False` if not.
+        """
+        if self.intersects_line(other, thresh)[0] == np.inf:
+            return True
+        else:
+            return False
+
+class Segment(FiniteObject):
     """A line segment in a three-dimensional Euclidean space.
 
     Mathematically, this line is a collection of all points satisfying
@@ -494,7 +627,18 @@ class Segment(GeometryObject):
 
     @endpoints.setter
     def endpoints(self, endpoints):
+        assert len(endpoints) == 2
+        for point in endpoints:
+            assert isinstance(point, Point)
         self._endpoints = endpoints
+
+    @property
+    def midpoint(self):
+        """Point: Midpoint of the segment.
+        """
+        midvec = 0.5*(Vector.from_point(self.endpoints[0]) +\
+                      Vector.from_point(self.endpoints[1]))
+        return Point.from_vector(midvec)
 
     @property
     def length(self):
@@ -521,7 +665,7 @@ class Segment(GeometryObject):
     __repr__ = __str__
 
     def contains_point(self, point, thresh=ZERO_TOLERANCE):
-        """Check if `point` lines on the current segment.
+        """Check if `point` lies on the current segment.
 
         Parameters
         ----------
@@ -571,7 +715,7 @@ class Segment(GeometryObject):
         n : int
             Number of points of intersection.
         intersection : None if `n` is zero, Point if `n` == 1, Segment if `n` == `inf`
-            GeometryObject.
+            FiniteObject.
         """
         n_line,intersection_line = self.associated_line.intersects_line(line, thresh)
         if n_line == 0:
@@ -600,7 +744,7 @@ class Segment(GeometryObject):
         n : int
             Number of points of intersection.
         intersection : None if `n` is zero, Point if `n` == 1, Segment if `n` == `inf`
-            GeometryObject.
+            FiniteObject.
         """
         n_line,intersection_line = self.intersects_line(other.associated_line, thresh)
         if n_line == 0:
@@ -661,7 +805,7 @@ class Segment(GeometryObject):
         self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
 
 
-class Plane(GeometryObject):
+class Plane(object):
     """A plane in a three-dimensional Euclidean space.
 
     Mathematically, this plane is a collection of all points satisfying
@@ -756,7 +900,7 @@ class Plane(GeometryObject):
         n : int
             Number of points of intersection.
         intersection : None if `n` is zero, Point if `n` == 1, Line if `n` == `inf`
-            GeometryObject.
+            FiniteObject.
         """
         ddotn = line.direction.dot(self.normal)
         if ddotn < thresh:
@@ -785,7 +929,7 @@ class Plane(GeometryObject):
         n : int
             Number of points of intersection.
         intersection : None if `n` is zero, Line or Plane if `n` == `inf`
-            GeometryObject.
+            FiniteObject.
         """
         n1crossn2 = self.normal.cross(other.normal)
         if n1crossn2.norm < thresh:
@@ -804,7 +948,6 @@ class Plane(GeometryObject):
             for i in range(3):
                 if abs(n1crossn2[i]) < thresh:
                     perpendicular_directions.append(i)
-            print(perpendicular_directions)
             if len(perpendicular_directions) == 0:
                 # No restrictions. We pick z=0, then solve for x and y.
                 i,j,k = 0,1,2
@@ -821,18 +964,38 @@ class Plane(GeometryObject):
             # Solving the 2D problem
             normals_ij = np.array([[self.normal[i], self.normal[j]],\
                                    [other.normal[i], other.normal[j]]])
-            ij = np.dot(np.linalg.inv(normals_ij), constants)
-            print(ij)
-            coords = np.array([0,0,0])
-            coords[i] = ij[0]
-            coords[j] = ij[1]
-            point_on_line = Point(coords)
+            ij = np.matmul(np.linalg.inv(normals_ij), constants)
+            coords = [0,0,0]
+            coords[i] = ij[0,0]
+            coords[j] = ij[1,0]
+            point_on_line = Point(np.array(coords))
             assert self.contains_point(point_on_line, thresh) and\
                    other.contains_point(point_on_line, thresh)
             return np.inf,Line(point_on_line, n1crossn2)
 
+    def is_same_plane(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current plane is the same plane as `other`.
 
-class Contour(GeometryObject):
+        Parameters
+        ----------
+        other : Plane
+            A plane to check for identicality with the current plane.
+        thresh : `float`
+            Threshold to determine if two planes are parallel.
+
+        Returns
+        -------
+        `bool`
+            `True` if `other` is the same as the current plane, `False` if not.
+        """
+        n,intersection = self.intersects_plane(other, thresh)
+        if n == np.inf and isinstance(intersection,Plane):
+            return True
+        else:
+            return False
+
+
+class Contour(FiniteObject):
     """A contour in a three-dimensional Euclidean space.
 
     (Hsu & Hock, 1991) "A contour is a closed planar polygon that may be one
@@ -861,7 +1024,9 @@ class Contour(GeometryObject):
         v1 = edges[0].vector
         v2 = edges[1].vector
         p = Plane(v1.cross(v2), edges[0].endpoints[0])
-        for edge in edges[2:]:
+        for i,edge in enumerate(edges):
+            assert edges[i].endpoints[0].is_same_point(edges[i-1].endpoints[1]),\
+                   'Consecutive edges must share a vertex.'
             assert p.intersects_line(edge.associated_line)[0] == np.inf,\
                    'All edges must be coplanar.'
         self._edges = edges
@@ -875,6 +1040,30 @@ class Contour(GeometryObject):
         n = v1.cross(v2)
         A = self.edges[0].endpoints[0]
         return Plane(n, A)
+
+    @classmethod
+    def from_vertices(cls, vertices):
+        """Create a contour whose edges are from consecutive vertices.
+
+        Parameters
+        ----------
+        vertices : [Point]
+            List of points that form the vertices of the contour.
+
+        Returns
+        -------
+        Contour
+        """
+        edges = []
+        for i,vertex in enumerate(vertices[:-1]):
+            edges.append(Segment([vertex,vertices[i+1]])) 
+        edges.append(Segment([vertices[-1],vertices[0]]))
+        return cls(edges)
+
+    def __str__(self):
+        return "Contour{}".format([edge.endpoints[0] for edge in self.edges])
+
+    __repr__ = __str__
 
     def is_coplanar(self, other, thresh=ZERO_TOLERANCE):
         """Check if the current contour is coplanar with `other`.
@@ -903,6 +1092,56 @@ class Contour(GeometryObject):
         else:
             return False
 
+    def intersects_contour(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current contour intersects `other` and find
+        J-points and J-segments as defined by Hsu and Hock.
+
+        Parameters
+        ----------
+        other : Contour
+            A contour to check for intersection with the current contour.
+        thresh : `float`
+            Threshold to determine if two contours are parallel.
+
+        Returns
+        -------
+        n : int
+            Number of J-segments.
+        J_points : [Point]
+            List of J-points.
+        J_segments : [Segment]
+            List of J-segments.
+        """
+        if not self.intersects_bounding_box(other, thresh):
+            return 0,[],[]
+        else:
+            n_plane,intersection_plane = self.associated_plane.intersects_plane\
+                                            (other.associated_plane, thresh)
+            if n_plane == 0:
+                return 0,[],[]
+            elif isinstance(intersection_plane, Line):
+                J_line = intersection_plane
+                J_points = []
+                J_segments = []
+                for edge in self.edges+other.edges:
+                    n,J_point = edge.intersects_line(J_line, thresh)
+                    if n == 1:
+                        assert J_line.contains_point(J_point)
+                        lamb = J_line.find_parameter_for_point(J_point, thresh)
+                        J_points.append((J_point,lamb))
+                J_points = sorted(J_points, key=operator.itemgetter(1))
+                for i,point in enumerate(J_points[0:-1]):
+                    current_segment = Segment([J_points[i][0], J_points[i+1][0]])
+                    if current_segment.length < thresh:
+                        continue
+                    if current_segment.midpoint.is_inside_contour(self) and\
+                       current_segment.midpoint.is_inside_contour(other):
+                        J_segments.append(current_segment)
+                return len(J_segments),J_segments
+            else:
+                pass
+
+
     def _find_bounding_box(self):
         xs = [edge.endpoints[i][0] for edge in self.edges for i in [0,1]]
         ys = [edge.endpoints[i][1] for edge in self.edges for i in [0,1]]
@@ -916,7 +1155,7 @@ class Contour(GeometryObject):
         self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
 
 
-class Facet(GeometryObject):
+class Facet(FiniteObject):
     """A facet in a three-dimensional Euclidean space.
 
     (Hsu & Hock, 1991) "A facet is specified by one or more contours that
