@@ -67,6 +67,12 @@ class FiniteObject(object):
 class Point(FiniteObject):
     """A point in a three-dimensional Euclidean space.
 
+    Two points are geometrically equal if and only if the distance between
+    them is smaller than ZERO_TOLERANCE.
+
+    Two points can be compared using lexicographical comparison of the tuple
+    (x,y,z).
+
     Parameters
     ----------
     coordinates : `array_like`, optional
@@ -120,6 +126,28 @@ class Point(FiniteObject):
 
     __repr__ = __str__
 
+    def __eq__(self, other):
+        return self.get_vector_to(other).norm < ZERO_TOLERANCE
+
+    def __ne__(self, other):
+        return self.get_vector_to(other).norm >= ZERO_TOLERANCE
+
+    def __lt__(self, other):
+        return (self.coordinates[0],self.coordinates[1],self.coordinates[2])\
+             < (other.coordinates[0],other.coordinates[1],other.coordinates[2])
+
+    def __gt__(self, other):
+        return (self.coordinates[0],self.coordinates[1],self.coordinates[2])\
+             > (other.coordinates[0],other.coordinates[1],other.coordinates[2])
+
+    def __le__(self, other):
+        return (self.coordinates[0],self.coordinates[1],self.coordinates[2])\
+            <= (other.coordinates[0],other.coordinates[1],other.coordinates[2])
+
+    def __ge__(self, other):
+        return (self.coordinates[0],self.coordinates[1],self.coordinates[2])\
+            >= (other.coordinates[0],other.coordinates[1],other.coordinates[2])
+
     def __getitem__(self, key):
         return self.coordinates[key]
 
@@ -138,7 +166,7 @@ class Point(FiniteObject):
         """
         return Vector(other.coordinates-self.coordinates)
 
-    def get_cabinet_projection(self, a=np.arctan2(2)):
+    def get_cabinet_projection(self, a=np.arctan(2)):
         """Point: The cabinet projection of the current point onto to xy-plane.
 
         Parameters
@@ -220,6 +248,9 @@ class Point(FiniteObject):
 
 class Vector(object):
     """A vector in a three-dimensional Euclidean space.
+
+    Two vectors are equal if and only if each pair of corresponding components
+    differ by less than ZERO_TOLERANCE.
 
     Parameters
     ----------
@@ -306,7 +337,30 @@ class Vector(object):
         except:
             raise TypeError('{} is not a number or a Vector.'. format(other))
 
-    def get_cabinet_projection(self, a=np.arctan2(2)):
+    def __eq__(self, other):
+        return self.is_same_vector(other, ZERO_TOLERANCE)
+
+    def is_same_vector(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current vector is the same as `other`.
+
+        Parameters
+        ----------
+        vector : Vector
+            A vector in the same Euclidean space.
+        thresh : `float`
+            Threshold to consider if the difference between the corresponding
+            components is zero.
+
+        Returns
+        -------
+        `bool`
+            `True` if the two vectors are the same, `False` if not.
+        """
+        return abs(self[0]-other[0])<thresh and\
+               abs(self[1]-other[1])<thresh and\
+               abs(self[2]-other[2])<thresh
+
+    def get_cabinet_projection(self, a=np.arctan(2)):
         """Vector: The cabinet projection of the current vector onto to xy-plane.
 
         Parameters
@@ -427,7 +481,7 @@ class Line(object):
 
     __repr__ = __str__
 
-    def get_cabinet_projection(self, a=np.arctan2(2)):
+    def get_cabinet_projection(self, a=np.arctan(2)):
         """Line: The cabinet projection of the current line onto to xy-plane.
 
         Parameters
@@ -613,6 +667,12 @@ class Line(object):
                 else:
                     return 0,None
 
+    def __eq__(self, other):
+        return self.is_same_line(other, ZERO_TOLERANCE)
+
+    def __ne__(self, other):
+        return not self.is_same_line(other, ZERO_TOLERANCE)
+
     def is_same_line(self, other, thresh=ZERO_TOLERANCE):
         """Check if the current line is the same line as `other`.
 
@@ -643,11 +703,14 @@ class Segment(FiniteObject):
         point = `anchor` + param * `direction`
 
     where param is a real parameter in a specified interval.
+    
+    Two segments are equal if and only if their endpoints are equal.
 
     Parameters
     ----------
     endpoints : [Point]
         A list of two points defining the endpoints of the segment.
+        The order does not matter as segments are non-directional.
     """
 
     def __init__(self, endpoints):
@@ -657,6 +720,7 @@ class Segment(FiniteObject):
     @property
     def endpoints(self):
         """[Point]: A list of two points defining the endpoints of the segment.
+        The two endpoints are sorted.
         """
         return self._endpoints
 
@@ -665,7 +729,7 @@ class Segment(FiniteObject):
         assert len(endpoints) == 2
         for point in endpoints:
             assert isinstance(point, Point)
-        self._endpoints = endpoints
+        self._endpoints = sorted(endpoints)
 
     @property
     def midpoint(self):
@@ -699,7 +763,7 @@ class Segment(FiniteObject):
 
     __repr__ = __str__
 
-    def get_cabinet_projection(self, a=np.arctan2(2)):
+    def get_cabinet_projection(self, a=np.arctan(2)):
         """Segment: The cabinet projection of the current segment onto to xy-plane.
 
         Parameters
@@ -708,8 +772,55 @@ class Segment(FiniteObject):
             Angle (in radians) of projection.
         """
         A = self.endpoints[0]
-        A = self.endpoints[1]
+        B = self.endpoints[1]
         return Segment([A.get_cabinet_projection(a), B.get_cabinet_projection(a)])
+
+    def __eq__(self, other):
+        return self.is_same_segment(other, ZERO_TOLERANCE)
+
+    def __ne__(self, other):
+        return not self.is_same_segment(other, ZERO_TOLERANCE)
+
+    def __lt__(self, other):
+        comparison_tuple_self = (self.length, self.endpoints[0], self.endpoints[1])
+        comparison_tuple_other = (other.length, other.endpoints[0], other.endpoints[1])
+        return comparison_tuple_self < comparison_tuple_other
+
+    def __gt__(self, other):
+        comparison_tuple_self = (self.length, self.endpoints[0], self.endpoints[1])
+        comparison_tuple_other = (other.length, other.endpoints[0], other.endpoints[1])
+        return comparison_tuple_self > comparison_tuple_other
+
+    def __le__(self, other):
+        comparison_tuple_self = (self.length, self.endpoints[0], self.endpoints[1])
+        comparison_tuple_other = (other.length, other.endpoints[0], other.endpoints[1])
+        return comparison_tuple_self <= comparison_tuple_other
+
+    def __ge__(self, other):
+        comparison_tuple_self = (self.length, self.endpoints[0], self.endpoints[1])
+        comparison_tuple_other = (other.length, other.endpoints[0], other.endpoints[1])
+        return comparison_tuple_self >= comparison_tuple_other
+
+    def is_same_segment(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current segment is the same segment as `other`.
+
+        Parameters
+        ----------
+        other : Segment
+            A segment to check for identicality with the current segment.
+        thresh : `float`
+            Threshold to determine if two endpoints are identical.
+
+        Returns
+        -------
+        `bool`
+            `True` if `other` is the same as the current segment, `False` if not.
+        """
+        if (self.endpoints[0].is_same_point(other.endpoints[0], thresh) and\
+            self.endpoints[1].is_same_point(other.endpoints[1], thresh)):
+            return True
+        else:
+            return False
 
     def contains_point(self, point, thresh=ZERO_TOLERANCE):
         """Check if `point` lies on the current segment.
@@ -841,6 +952,7 @@ class Segment(FiniteObject):
                         return np.inf,intersection
             else:
                 return 0,None
+
 
     def _find_bounding_box(self):
         xmin = min(self.endpoints[0][0], self.endpoints[1][0])
@@ -1020,6 +1132,12 @@ class Plane(object):
                    other.contains_point(point_on_line, thresh)
             return np.inf,Line(point_on_line, n1crossn2)
 
+    def __eq__(self, other):
+        return self.is_same_plane(other, ZERO_TOLERANCE)
+
+    def __ne__(self, other):
+        return not self.is_same_plane(other, ZERO_TOLERANCE)
+
     def is_same_plane(self, other, thresh=ZERO_TOLERANCE):
         """Check if the current plane is the same plane as `other`.
 
@@ -1048,6 +1166,8 @@ class Contour(FiniteObject):
     (Hsu & Hock, 1991) "A contour is a closed planar polygon that may be one
     of ordered orientation."
 
+    Two contours are equal if and only if their edges are equal.
+
     Parameters
     ----------
     edges : [Segment]
@@ -1072,7 +1192,10 @@ class Contour(FiniteObject):
         v2 = edges[1].vector
         p = Plane(v1.cross(v2), edges[0].endpoints[0])
         for i,edge in enumerate(edges):
-            assert edges[i].endpoints[0].is_same_point(edges[i-1].endpoints[1]),\
+            assert edges[i].endpoints[0] == edges[i-1].endpoints[0] or\
+                   edges[i].endpoints[0] == edges[i-1].endpoints[1] or\
+                   edges[i].endpoints[1] == edges[i-1].endpoints[0] or\
+                   edges[i].endpoints[1] == edges[i-1].endpoints[1],\
                    'Consecutive edges must share a vertex.'
             assert p.intersects_line(edge.associated_line)[0] == np.inf,\
                    'All edges must be coplanar.'
@@ -1110,9 +1233,47 @@ class Contour(FiniteObject):
     def __str__(self):
         return "Contour{}".format([edge.endpoints[0] for edge in self.edges])
 
-    __repr__ = __str__
+    def __repr__(self):
+        return "\nContour{}".format([edge.endpoints[0] for edge in self.edges])
 
-    def get_cabinet_projection(self, a=np.arctan2(2)):
+    # __repr__ = __str__
+
+    def __eq__(self, other):
+        return self.is_same_contour(other, ZERO_TOLERANCE)
+
+    def __ne__(self, other):
+        return not self.is_same_contour(other, ZERO_TOLERANCE)
+
+    def is_same_contour(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current contour is the same segment as `other`.
+
+        Parameters
+        ----------
+        other : Contour
+            A contour to check for identicality with the current contour.
+        thresh : `float`
+            Threshold to determine if two edges are identical.
+
+        Returns
+        -------
+        `bool`
+            `True` if `other` is the same as the current contour, `False` if not.
+        """
+        if len(self.edges) != len(other.edges):
+            return False
+        else:
+            self_edges_sorted = sorted(self.edges)
+            other_edges_sorted = sorted(other.edges)
+            print(self_edges_sorted)
+            print(other_edges_sorted)
+            for i in range(len(self_edges_sorted)):
+                if self_edges_sorted[i] == other_edges_sorted[i]:
+                    continue
+                else:
+                    return False
+            return True
+
+    def get_cabinet_projection(self, a=np.arctan(2)):
         """Contour: The cabinet projection of the current contour onto to xy-plane.
 
         Parameters
@@ -1198,7 +1359,6 @@ class Contour(FiniteObject):
             else:
                 pass
 
-
     def _find_bounding_box(self):
         xs = [edge.endpoints[i][0] for edge in self.edges for i in [0,1]]
         ys = [edge.endpoints[i][1] for edge in self.edges for i in [0,1]]
@@ -1220,7 +1380,7 @@ class Facet(FiniteObject):
 
     Parameters
     ----------
-    countours : [segment]
+    countours : [Contour]
         A list of contours defining the facet.
     """
 
@@ -1248,7 +1408,15 @@ class Facet(FiniteObject):
         """
         return self.contours[0].associated_plane
 
-    def get_cabinet_projection(self, a=np.arctan2(2)):
+    def __str__(self):
+        return "Facet{}".format(self.contours)
+
+    def __repr__(self):
+        return "\nFacet{}".format(self.contours)
+
+    # __repr__ = __str__
+
+    def get_cabinet_projection(self, a=np.arctan(2)):
         """Facet: The cabinet projection of the current facet onto to xy-plane.
 
         Parameters
@@ -1266,4 +1434,82 @@ class Facet(FiniteObject):
         xmax = max([contour.bounding_box[0][1] for contour in self.contours])
         ymax = max([contour.bounding_box[1][1] for contour in self.contours])
         zmax = max([contour.bounding_box[2][1] for contour in self.contours])
+        self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
+
+
+class Polyhedron(FiniteObject):
+    """A polyhedron in a three-dimensional Euclidean space.
+
+    Parameters
+    ----------
+    facets : [Facet]
+        A list of facets defining the polyhedron.
+    """
+
+    def __init__(self, facets):
+        self.facets = facets
+        self._find_bounding_box()
+
+    @property
+    def facets(self):
+        """[Facet]: A list of facets defining the polyhedron.
+        """
+        return self._facets
+
+    @facets.setter
+    def facets(self, facets):
+        self._facets = facets
+
+    @property
+    def edges(self):
+        """[Segment]: A list of segments defining the polyhedron.
+        """
+        edges = [contour.edges for facet in self.facets for contour in facet.contours]
+        edges_flattened = [edge for edge_list in edges for edge in edge_list]
+        edges_sorted = sorted(edges_flattened)
+        edges_unique = [edges_sorted[0]]
+        for edge in edges_sorted[1:]:
+            if edge == edges_unique[-1]:
+                continue
+            else:
+                edges_unique.append(edge)
+        return edges_unique
+
+    @property
+    def vertices(self):
+        """[Point]: A list of vertices defining the polyhedron.
+        """
+        vertices = [vertex for edge in self.edges for vertex in edge.endpoints]
+        vertices_sorted = sorted(vertices)
+        vertices_unique = [vertices_sorted[0]]
+        for vertex in vertices_sorted[1:]:
+            if vertex == vertices_unique[-1]:
+                continue
+            else:
+                vertices_unique.append(vertex)
+        return vertices_unique
+
+    def __str__(self):
+        return "Polyhedron{}".format(self.facets)
+
+    __repr__ = __str__
+
+    def get_cabinet_projection(self, a=np.arctan(2)):
+        """Polyhedron`: The cabinet projection of the current polyhedron onto to xy-plane.
+
+        Parameters
+        ----------
+        a : `float`
+            Angle (in radians) of projection.
+        """
+        return Polyhedron([facet.get_cabinet_projection(a) for facet in\
+                      self.facets])
+
+    def _find_bounding_box(self):
+        xmin = min([facet.bounding_box[0][0] for facet in self.facets])
+        ymin = min([facet.bounding_box[1][0] for facet in self.facets])
+        zmin = min([facet.bounding_box[2][0] for facet in self.facets])
+        xmax = max([facet.bounding_box[0][1] for facet in self.facets])
+        ymax = max([facet.bounding_box[1][1] for facet in self.facets])
+        zmax = max([facet.bounding_box[2][1] for facet in self.facets])
         self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
