@@ -41,10 +41,10 @@ class FiniteObject(object):
         [(xmin,xmax),(ymin,ymax),(zmin,zmax)] = self.bounding_box
         xmin_plane = Plane(Vector([1,0,0]), Point([xmin,0,0]))
         xmax_plane = Plane(Vector([1,0,0]), Point([xmax,0,0]))
-        ymin_plane = Plane(Vector([0,1,0]), Point([ymin,0,0]))
-        ymax_plane = Plane(Vector([0,1,0]), Point([ymax,0,0]))
-        zmin_plane = Plane(Vector([0,0,1]), Point([zmin,0,0]))
-        zmax_plane = Plane(Vector([0,0,1]), Point([zmax,0,0]))
+        ymin_plane = Plane(Vector([0,1,0]), Point([0,ymin,0]))
+        ymax_plane = Plane(Vector([0,1,0]), Point([0,ymax,0]))
+        zmin_plane = Plane(Vector([0,0,1]), Point([0,0,zmin]))
+        zmax_plane = Plane(Vector([0,0,1]), Point([0,0,zmax]))
         return [(xmin_plane,xmax_plane),(ymin_plane,ymax_plane),(zmin_plane,zmax_plane)]
 
     def _find_bounding_box(self):
@@ -138,6 +138,19 @@ class Point(FiniteObject):
         """
         return Vector(other.coordinates-self.coordinates)
 
+    def get_cabinet_projection(self, a=np.arctan2(2)):
+        """Point: The cabinet projection of the current point onto to xy-plane.
+
+        Parameters
+        ----------
+        a : `float`
+            Angle (in radians) of projection.
+        """
+        x = self[0]
+        y = self[1]
+        z = self[2]
+        return Point([x+0.5*z*np.cos(a), y+0.5*z*np.sin(a), 0])
+
     def is_same_point(self, other, thresh=ZERO_TOLERANCE):
         """Check if the current point is the same as `other`.
 
@@ -188,8 +201,6 @@ class Point(FiniteObject):
                     else:
                         continue
                 test_segment = Segment([self,intersection])
-                print(intersection.is_same_point(self, thresh)) 
-                print(self,contour)
                 n_intersections_with_edges = 0
                 for edge in contour.edges:
                     if test_segment.intersects_segment(edge, thresh)[0] == 1:
@@ -294,6 +305,19 @@ class Vector(object):
             return Vector(self.components/other)
         except:
             raise TypeError('{} is not a number or a Vector.'. format(other))
+
+    def get_cabinet_projection(self, a=np.arctan2(2)):
+        """Vector: The cabinet projection of the current vector onto to xy-plane.
+
+        Parameters
+        ----------
+        a : `float`
+            Angle (in radians) of projection.
+        """
+        x = self[0]
+        y = self[1]
+        z = self[2]
+        return Vector([x+0.5*z*np.cos(a), y+0.5*z*np.sin(a), 0])
 
     def dot(self, other):
         """Dot product between the current vector and `other`.
@@ -402,6 +426,17 @@ class Line(object):
         return "Line[{} + lambda*{}]".format(self.anchor, self.direction)
 
     __repr__ = __str__
+
+    def get_cabinet_projection(self, a=np.arctan2(2)):
+        """Line: The cabinet projection of the current line onto to xy-plane.
+
+        Parameters
+        ----------
+        a : `float`
+            Angle (in radians) of projection.
+        """
+        return Line(self.anchor.get_cabinet_projection(a),\
+                    self.direction.get_cabinet_projection(a))
 
     def get_point(self, param):
         """Obtain a point on the line satisfying
@@ -663,6 +698,18 @@ class Segment(FiniteObject):
         return "Segment[{}, {}]".format(self.endpoints[0], self.endpoints[1])
 
     __repr__ = __str__
+
+    def get_cabinet_projection(self, a=np.arctan2(2)):
+        """Segment: The cabinet projection of the current segment onto to xy-plane.
+
+        Parameters
+        ----------
+        a : `float`
+            Angle (in radians) of projection.
+        """
+        A = self.endpoints[0]
+        A = self.endpoints[1]
+        return Segment([A.get_cabinet_projection(a), B.get_cabinet_projection(a)])
 
     def contains_point(self, point, thresh=ZERO_TOLERANCE):
         """Check if `point` lies on the current segment.
@@ -1065,6 +1112,16 @@ class Contour(FiniteObject):
 
     __repr__ = __str__
 
+    def get_cabinet_projection(self, a=np.arctan2(2)):
+        """Contour: The cabinet projection of the current contour onto to xy-plane.
+
+        Parameters
+        ----------
+        a : `float`
+            Angle (in radians) of projection.
+        """
+        return Contour([edge.get_cabinet_projection(a) for edge in self.edges])
+
     def is_coplanar(self, other, thresh=ZERO_TOLERANCE):
         """Check if the current contour is coplanar with `other`.
 
@@ -1190,6 +1247,17 @@ class Facet(FiniteObject):
         """Plane: The plane containing this facet.
         """
         return self.contours[0].associated_plane
+
+    def get_cabinet_projection(self, a=np.arctan2(2)):
+        """Facet: The cabinet projection of the current facet onto to xy-plane.
+
+        Parameters
+        ----------
+        a : `float`
+            Angle (in radians) of projection.
+        """
+        return Facet([contour.get_cabinet_projection(a) for contour in\
+                      self.contours])
 
     def _find_bounding_box(self):
         xmin = min([contour.bounding_box[0][0] for contour in self.contours])
