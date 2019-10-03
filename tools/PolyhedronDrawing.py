@@ -20,6 +20,8 @@ class PolyhedronDrawing():
 
     @property
     def polyhedra(self):
+        """[Polyhedron]: A list of all polyhedra in the scene.
+        """
         return self._polyhedra
 
     @polyhedra.setter
@@ -28,4 +30,17 @@ class PolyhedronDrawing():
             assert isinstance(polyhedron, Polyhedron)
         self._polyhedra = polyhedra
 
+    @property
+    def all_edges(self):
+        """[Segment]: A list of all edges in the scene.
+        """
+        return [edge for edge in polyhedron.edges\
+                     for polyhedron in self.polyhedra]
+
+    @property
+    def all_facets(self):
+        """[Facet] A list of all facets in the scene.
+        """
+        return [facet for facet in polyhedron.facets\
+                     for polyhedron in self.polyhedra]
 
