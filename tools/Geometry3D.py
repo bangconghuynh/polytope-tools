@@ -11,7 +11,7 @@ from scipy.spatial import ConvexHull
 # Constants
 ZERO_TOLERANCE = 1e-15
 
-class FiniteObject(object):
+class FiniteObject:
     """A generic finite geometrical object in a three-dimensional Euclidean space.
     Each finite object has a bounding box.
     """
@@ -53,6 +53,14 @@ class FiniteObject(object):
         print("find_bounding_box must be implemented in the child class.")
 
     def intersects_bounding_box(self, other, thresh=ZERO_TOLERANCE):
+        """Check if the current FiniteObject's bounding box intersects with
+        `other`'s bounding box.
+
+        Returns
+        -------
+        `bool`:
+            `True` if the two bounding boxes intersect, `False` if not.
+        """
         if self.bounding_box[0][0] > other.bounding_box[0][1] or\
            self.bounding_box[0][1] < other.bounding_box[0][0] or\
            self.bounding_box[1][0] > other.bounding_box[1][1] or\
@@ -169,10 +177,20 @@ class Point(FiniteObject):
     def get_cabinet_projection(self, a=np.arctan(2)):
         """Point: The cabinet projection of the current point onto to xy-plane.
 
+        In a right-handed coordinate system, the cabinet projection projects
+        the point (x,y,z) onto (x-0.5*z*cosa,y-0.5*z*sina,0). Orthogonality
+        between the x- and y-axes is maintained, while the projected z-axis
+        makes an angle of a w.r.t. the x-axis. In addition, the length of the
+        receding lines is cut in half, hence the factor of 0.5.
+
+        The viewing vector is (0.5*z*cosa,0.5*z*sina,z) which is projected onto
+        the origin. The projection lines are all parallel to this vector since
+        this projection is a parallel projection.
+
         Parameters
         ----------
         a : `float`
-            Angle (in radians) of projection.
+            Angle (radians) of projection.
         """
         x = self[0]
         y = self[1]
@@ -225,7 +243,15 @@ class Point(FiniteObject):
                         if intersection.is_same_point(self, thresh):
                             continue
                         else:
-                            break
+                            is_vertex = False
+                            for vertex in contour.vertices:
+                                if intersection.is_same_point(vertex, thresh):
+                                    is_vertex = True
+                                    break
+                            if is_vertex:
+                                continue
+                            else:
+                                break
                     else:
                         continue
                 test_segment = Segment([self,intersection])
@@ -246,7 +272,7 @@ class Point(FiniteObject):
         self.bounding_box = [(self[0],self[0]),(self[1],self[1]),(self[2],self[2])]
 
 
-class Vector(object):
+class Vector:
     """A vector in a three-dimensional Euclidean space.
 
     Two vectors are equal if and only if each pair of corresponding components
@@ -361,17 +387,28 @@ class Vector(object):
                abs(self[2]-other[2])<thresh
 
     def get_cabinet_projection(self, a=np.arctan(2)):
-        """Vector: The cabinet projection of the current vector onto to xy-plane.
+        """Vector: The cabinet projection of the current vector onto to the
+        xy-plane.
+
+        In a right-handed coordinate system, the cabinet projection projects
+        the point (x,y,z) onto (x-0.5*z*cosa,y-0.5*z*sina,0). Orthogonality
+        between the x- and y-axes is maintained, while the projected z-axis
+        makes an angle of a w.r.t. the x-axis. In addition, the length of the
+        receding lines is cut in half, hence the factor of 0.5.
+
+        The viewing vector is (0.5*z*cosa,0.5*z*sina,z) which is projected onto
+        the origin. The projection lines are all parallel to this vector since
+        this projection is a parallel projection.
 
         Parameters
         ----------
         a : `float`
-            Angle (in radians) of projection.
+            Angle (radians) of projection.
         """
         x = self[0]
         y = self[1]
         z = self[2]
-        return Vector([x+0.5*z*np.cos(a), y+0.5*z*np.sin(a), 0])
+        return Vector([x-0.5*z*np.cos(a), y-0.5*z*np.sin(a), 0])
 
     def dot(self, other):
         """Dot product between the current vector and `other`.
@@ -424,7 +461,7 @@ class Vector(object):
             return self/self.norm
 
 
-class Line(object):
+class Line:
     """A line in a three-dimensional Euclidean space.
 
     Mathematically, this line is a collection of all points satisfying
@@ -476,18 +513,34 @@ class Line(object):
         else:
             self._direction = -vector.normalise()
 
+    def get_a_point(self):
+        """Point: Return a point on the line. The easiest point to return
+        is the anchor.
+        """
+        return self.anchor
+
     def __str__(self):
         return "Line[{} + lambda*{}]".format(self.anchor, self.direction)
 
     __repr__ = __str__
 
     def get_cabinet_projection(self, a=np.arctan(2)):
-        """Line: The cabinet projection of the current line onto to xy-plane.
+        """Line: The cabinet projection of the current line onto the xy-plane.
+
+        In a right-handed coordinate system, the cabinet projection projects
+        the point (x,y,z) onto (x-0.5*z*cosa,y-0.5*z*sina,0). Orthogonality
+        between the x- and y-axes is maintained, while the projected z-axis
+        makes an angle of a w.r.t. the x-axis. In addition, the length of the
+        receding lines is cut in half, hence the factor of 0.5.
+
+        The viewing vector is (0.5*z*cosa,0.5*z*sina,z) which is projected onto
+        the origin. The projection lines are all parallel to this vector since
+        this projection is a parallel projection.
 
         Parameters
         ----------
         a : `float`
-            Angle (in radians) of projection.
+            Angle (radians) of projection.
         """
         return Line(self.anchor.get_cabinet_projection(a),\
                     self.direction.get_cabinet_projection(a))
@@ -582,7 +635,7 @@ class Line(object):
                     lambdas.append(anchor_to_point[i]/self.direction[i])
             assert len(lambdas) >= 1
             if len(lambdas) > 1:
-                for i in range(len(lambdas-1)):
+                for i in range(len(lambdas)-1):
                     assert abs(lambdas[i]-lambdas[i+1]) < thresh
             return lambdas[0]
         else:
@@ -666,6 +719,25 @@ class Line(object):
                     return 1,point_on_self
                 else:
                     return 0,None
+
+    def intersects_plane(self, plane, thresh=ZERO_TOLERANCE):
+        """Check if the current line intersects `plane`.
+
+        Parameters
+        ----------
+        plane : Plane
+            A plane to check for intersection with the current line.
+        thresh : `float`
+            Threshold to determine if `plane` is parallel to the current line.
+
+        Returns
+        -------
+        n : int
+            Number of points of intersection.
+        intersection : None if `n` is zero, Point if `n` == 1, Line if `n` == `inf`
+            FiniteObject.
+        """
+        return plane.intersects_line(self, thresh)
 
     def __eq__(self, other):
         return self.is_same_line(other, ZERO_TOLERANCE)
@@ -758,18 +830,35 @@ class Segment(FiniteObject):
         direction = self.endpoints[0].get_vector_to(self.endpoints[1])
         return Line(self.endpoints[0], direction)
 
+    def get_a_point(self):
+        """Point: Return a point on the segment. The easiest point to return
+        is the midpoint.
+        """
+        return self.midpoint
+
     def __str__(self):
         return "Segment[{}, {}]".format(self.endpoints[0], self.endpoints[1])
 
     __repr__ = __str__
 
     def get_cabinet_projection(self, a=np.arctan(2)):
-        """Segment: The cabinet projection of the current segment onto to xy-plane.
+        """Segment: The cabinet projection of the current segment onto the
+        xy-plane.
+
+        In a right-handed coordinate system, the cabinet projection projects
+        the point (x,y,z) onto (x-0.5*z*cosa,y-0.5*z*sina,0). Orthogonality
+        between the x- and y-axes is maintained, while the projected z-axis
+        makes an angle of a w.r.t. the x-axis. In addition, the length of the
+        receding lines is cut in half, hence the factor of 0.5.
+
+        The viewing vector is (0.5*z*cosa,0.5*z*sina,z) which is projected onto
+        the origin. The projection lines are all parallel to this vector since
+        this projection is a parallel projection.
 
         Parameters
         ----------
         a : `float`
-            Angle (in radians) of projection.
+            Angle (radians) of projection.
         """
         A = self.endpoints[0]
         B = self.endpoints[1]
@@ -953,6 +1042,122 @@ class Segment(FiniteObject):
             else:
                 return 0,None
 
+    def intersects_contour(self, contour, thresh=ZERO_TOLERANCE):
+        """Check if the current segment intersects `contour` and find
+        J-points and J-segments as defined by Hsu and Hock.
+
+        Parameters
+        ----------
+        contour : Contour
+            A contour to check for intersection with the current contour.
+        thresh : `float`
+            Threshold to determine if the segment and `contour` are parallel.
+
+        Returns
+        -------
+        n : int
+            Number of segments inside `contour`.
+        J_points : [Point]
+            List of J-points, including the endpoints of the current segment.
+        segments_inside : [Segment]
+            List of segments inside `contour`.
+        segments_outside : [Segment]
+            List of segments outside `contour`.
+        """
+        if not self.intersects_bounding_box(contour, thresh):
+            return 0,[],[]
+        else:
+            n_plane,intersection_plane = self.associated_line.intersects_plane\
+                                            (contour.associated_plane, thresh)
+            assert n_plane != 0
+            if n_plane == 1:
+                if self.contains_point(intersection_plane, thresh) and\
+                        intersection_plane.is_inside_contour(contour, thresh):
+                    return 1,[intersection_plane],[]
+                else:
+                    return 0,None
+            else:
+                inside = []
+                if self.endpoints[0].is_inside_contour(contour, thresh):
+                    inside.append(self.endpoints[0])
+                if self.endpoints[1].is_inside_contour(contour, thresh):
+                    inside.append(self.endpoints[1])
+
+                # J_line = intersection_plane
+                J_points = []
+                J_segments_inside = []
+                J_segments_outside = []
+                for edge in contour.edges:
+                    n,J_point = self.intersects_segment(edge, thresh)
+                    if n == 1:
+                        J_points.append(J_point)
+                J_points.append(self.endpoints[0])
+                J_points.append(self.endpoints[1])
+                J_points = sorted(J_points)
+                for i,point in enumerate(J_points[0:-1]):
+                    current_segment = Segment([J_points[i], J_points[i+1]])
+                    if current_segment.length < thresh:
+                        continue
+                    if current_segment.midpoint.is_inside_contour(contour):
+                        J_segments_inside.append(current_segment)
+                    else:
+                        J_segments_outside.append(current_segment)
+                return len(J_segments_inside),J_points,J_segments_inside,\
+                                                       J_segments_outside
+
+    # def intersects_contour(self, contour, thresh=ZERO_TOLERANCE):
+    #     """Check if the current segment intersects `contour`.
+
+    #     Parameters
+    #     ----------
+    #     contour : Contour
+    #         A contour to check for intersection with the current segment.
+    #     thresh : `float`
+    #         Threshold to determine if the shortest distance between the line
+    #         and the current segment is zero.
+
+    #     Returns
+    #     -------
+    #     n : int
+    #         Number of points of intersection.
+    #     intersection : None if `n` is zero, Point if `n` == 1, Segment if `n` == `inf`
+    #         FiniteObject.
+    #     """
+    #     if self.intersects_bounding_box(contour, thresh):
+    #         n_plane,intersection_plane = self.associated_line.intersects_plane\
+    #                                         (contour.associated_plane, thresh)
+    #         assert n_plane != 0
+    #         if n_plane == 1:
+    #             if self.contains_point(intersection_plane, thresh) and\
+    #                     intersection_plane.is_inside_contour(contour, thresh):
+    #                 return 1,intersection_plane
+    #             else:
+    #                 return 0,None
+    #         else:
+    #             inside = []
+    #             if self.endpoints[0].is_inside_contour(contour, thresh):
+    #                 inside.append(self.endpoints[0])
+    #             if self.endpoints[1].is_inside_contour(contour, thresh):
+    #                 inside.append(self.endpoints[1])
+    #             if len(inside) == 2:
+    #                 return np.inf,self
+    #             elif len(inside) == 0:
+    #                 return 0,None
+    #             else:
+    #                 for edge in contour.edges:
+    #                     n,intersection =\
+    #                         self.intersects_segment(edge, thresh)
+    #                     if n == 1:
+    #                         break
+    #                     else:
+    #                         continue
+    #             segment = Segment([inside[0],intersection])
+    #             if segment.length < thresh:
+    #                 return 1,inside[0]
+    #             else:
+    #                 return np.inf,segment
+    #     else:
+    #         return 0,None
 
     def _find_bounding_box(self):
         xmin = min(self.endpoints[0][0], self.endpoints[1][0])
@@ -964,7 +1169,7 @@ class Segment(FiniteObject):
         self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
 
 
-class Plane(object):
+class Plane:
     """A plane in a three-dimensional Euclidean space.
 
     Mathematically, this plane is a collection of all points satisfying
@@ -983,6 +1188,7 @@ class Plane(object):
     def __init__(self, normal, point):
         self.normal = normal
         self.constant = Vector.from_point(point).dot(self.normal)
+        self._apoint = point
 
     @property
     def normal(self):
@@ -1017,10 +1223,25 @@ class Plane(object):
     def constant(self, value):
         self._constant = value
 
+    def get_a_point(self):
+        """Point: Return a point on the plane.
+        """
+        return self._apoint
+
     def __str__(self):
         return "Plane[r.{}={}]".format(self.normal, self.constant)
 
     __repr__ = __str__
+
+    def get_front_normal(self, viewing_vector):
+        """Vector: The 'frontface' normal relative to `viewing_vector`.
+
+        The 'frontface' normal has a positive dot product with `viewing_vector`.
+        """
+        if self.normal.dot(viewing_vector.normalise()) >= 0:
+            return self.normal
+        else:
+            return -self.normal
 
     def contains_point(self, point, thresh=ZERO_TOLERANCE):
         """Check if `point` lies on the current plane.
@@ -1202,6 +1423,19 @@ class Contour(FiniteObject):
         self._edges = edges
 
     @property
+    def vertices(self):
+        """[Point]: A lsit of all unique vertices in this contour.
+        """
+        unique_vertices = []
+        for i in range(len(self.edges)):
+            if self.edges[i].endpoints[0] == self.edges[i-1].endpoints[0] or\
+               self.edges[i].endpoints[0] == self.edges[i-1].endpoints[1]:
+                unique_vertices.append(self.edges[i].endpoints[0])
+            else:
+                unique_vertices.append(self.edges[i].endpoints[1])
+        return unique_vertices
+
+    @property
     def associated_plane(self):
         """Plane: The plane containing this contour.
         """
@@ -1230,11 +1464,18 @@ class Contour(FiniteObject):
         edges.append(Segment([vertices[-1],vertices[0]]))
         return cls(edges)
 
+    def get_front_normal(self, viewing_vector):
+        """Vector: The 'frontface' normal relative to `viewing_vector`.
+
+        The 'frontface' normal has a positive dot product with `viewing_vector`.
+        """
+        return self.associated_plane.get_front_normal(viewing_vector)
+
     def __str__(self):
-        return "Contour{}".format([edge.endpoints[0] for edge in self.edges])
+        return "Contour{}".format(self.vertices)
 
     def __repr__(self):
-        return "\nContour{}".format([edge.endpoints[0] for edge in self.edges])
+        return "\nContour{}".format(self.vertices)
 
     # __repr__ = __str__
 
@@ -1243,6 +1484,19 @@ class Contour(FiniteObject):
 
     def __ne__(self, other):
         return not self.is_same_contour(other, ZERO_TOLERANCE)
+
+    def get_a_point(self):
+        """Point: Return a point on the contour. The easiest point to return
+        is the geometric centre.
+        """
+        all_vertices = self.vertices
+        vec_sum = Vector.from_point(all_vertices[0])
+        for vertex in all_vertices[1:]:
+            vec_sum = vec_sum + Vector.from_point(vertex)
+        centre = Point.from_vector(vec_sum/len(all_vertices))
+        print(centre)
+        assert centre.is_inside_contour(self)
+        return centre
 
     def is_same_contour(self, other, thresh=ZERO_TOLERANCE):
         """Check if the current contour is the same segment as `other`.
@@ -1274,12 +1528,23 @@ class Contour(FiniteObject):
             return True
 
     def get_cabinet_projection(self, a=np.arctan(2)):
-        """Contour: The cabinet projection of the current contour onto to xy-plane.
+        """Contour: The cabinet projection of the current contour onto the
+        xy-plane.
+
+        In a right-handed coordinate system, the cabinet projection projects
+        the point (x,y,z) onto (x-0.5*z*cosa,y-0.5*z*sina,0). Orthogonality
+        between the x- and y-axes is maintained, while the projected z-axis
+        makes an angle of a w.r.t. the x-axis. In addition, the length of the
+        receding lines is cut in half, hence the factor of 0.5.
+
+        The viewing vector is (0.5*z*cosa,0.5*z*sina,z) which is projected onto
+        the origin. The projection lines are all parallel to this vector since
+        this projection is a parallel projection.
 
         Parameters
         ----------
         a : `float`
-            Angle (in radians) of projection.
+            Angle (radians) of projection.
         """
         return Contour([edge.get_cabinet_projection(a) for edge in self.edges])
 
@@ -1355,7 +1620,8 @@ class Contour(FiniteObject):
                     if current_segment.midpoint.is_inside_contour(self) and\
                        current_segment.midpoint.is_inside_contour(other):
                         J_segments.append(current_segment)
-                return len(J_segments),J_segments
+                J_points_returned = [t[0] for t in J_points]
+                return len(J_segments),J_points_returned,J_segments
             else:
                 pass
 
@@ -1416,13 +1682,36 @@ class Facet(FiniteObject):
 
     # __repr__ = __str__
 
+    def get_a_point(self):
+        """Point: Return a point on the contour. The easiest point to return
+        is the geometric centre of the first contour.
+        """
+        return self.contours[0].get_a_point()
+
+    def get_front_normal(self, viewing_vector):
+        """Vector: The 'frontface' normal relative to `viewing_vector`.
+
+        The 'frontface' normal has a positive dot product with `viewing_vector`.
+        """
+        return self.associated_plane.get_front_normal(viewing_vector)
+
     def get_cabinet_projection(self, a=np.arctan(2)):
         """Facet: The cabinet projection of the current facet onto to xy-plane.
+
+        In a right-handed coordinate system, the cabinet projection projects
+        the point (x,y,z) onto (x-0.5*z*cosa,y-0.5*z*sina,0). Orthogonality
+        between the x- and y-axes is maintained, while the projected z-axis
+        makes an angle of a w.r.t. the x-axis. In addition, the length of the
+        receding lines is cut in half, hence the factor of 0.5.
+
+        The viewing vector is (0.5*z*cosa,0.5*z*sina,z) which is projected onto
+        the origin. The projection lines are all parallel to this vector since
+        this projection is a parallel projection.
 
         Parameters
         ----------
         a : `float`
-            Angle (in radians) of projection.
+            Angle (radians) of projection.
         """
         return Facet([contour.get_cabinet_projection(a) for contour in\
                       self.contours])
@@ -1495,12 +1784,23 @@ class Polyhedron(FiniteObject):
     __repr__ = __str__
 
     def get_cabinet_projection(self, a=np.arctan(2)):
-        """Polyhedron`: The cabinet projection of the current polyhedron onto to xy-plane.
+        """Polyhedron`: The cabinet projection of the current polyhedron onto
+        the xy-plane.
+
+        In a right-handed coordinate system, the cabinet projection projects
+        the point (x,y,z) onto (x-0.5*z*cosa,y-0.5*z*sina,0). Orthogonality
+        between the x- and y-axes is maintained, while the projected z-axis
+        makes an angle of a w.r.t. the x-axis. In addition, the length of the
+        receding lines is cut in half, hence the factor of 0.5.
+
+        The viewing vector is (0.5*z*cosa,0.5*z*sina,z) which is projected onto
+        the origin. The projection lines are all parallel to this vector since
+        this projection is a parallel projection.
 
         Parameters
         ----------
         a : `float`
-            Angle (in radians) of projection.
+            Angle (radians) of projection.
         """
         return Polyhedron([facet.get_cabinet_projection(a) for facet in\
                       self.facets])

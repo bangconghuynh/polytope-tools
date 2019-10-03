@@ -1,7 +1,7 @@
 #!/usr/bin/python3 -m
 
 from .Geometry3D import Point, Vector, Line, Segment, Plane, Contour, Facet, Polyhedron
-import pprint
+from .PolyhedronDrawing import PolyhedronDrawing
 
 def main():
     A = Point([0,0,0])
@@ -15,8 +15,14 @@ def main():
     fBCD = Facet([Contour.from_vertices([B,C,D])])
 
     pABCD = Polyhedron([fABC, fABD, fACD, fBCD])
-    print(pABCD.edges)
-    print(pABCD.get_cabinet_projection())
+
+    scene = PolyhedronDrawing([pABCD])
+
+    cABC = Contour.from_vertices([A,B,C])
+    D = Point([-1,1,0])
+    E = Point([2,1,0])
+    sDE = Segment([D,E])
+    print(sDE.intersects_contour(cABC))
 
 if __name__ == '__main__':
     main()
