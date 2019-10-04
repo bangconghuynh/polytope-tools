@@ -9,7 +9,7 @@ from scipy.spatial import ConvexHull
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
 
 # Constants
-ZERO_TOLERANCE = 1e-15
+ZERO_TOLERANCE = 1e-14
 
 class FiniteObject:
     """A generic finite geometrical object in a three-dimensional Euclidean space.
@@ -45,7 +45,8 @@ class FiniteObject:
         ymax_plane = Plane(Vector([0,1,0]), Point([0,ymax,0]))
         zmin_plane = Plane(Vector([0,0,1]), Point([0,0,zmin]))
         zmax_plane = Plane(Vector([0,0,1]), Point([0,0,zmax]))
-        return [(xmin_plane,xmax_plane),(ymin_plane,ymax_plane),(zmin_plane,zmax_plane)]
+        return [(xmin_plane,xmax_plane),(ymin_plane,ymax_plane),\
+                (zmin_plane,zmax_plane)]
 
     def _find_bounding_box(self):
         """Find the bounding box of the current geometrical object."
@@ -236,7 +237,9 @@ class Point(FiniteObject):
                         return True
                 edge_midpoint = contour.edges[0].midpoint
                 l = Segment([self,edge_midpoint]).associated_line
-                bounding_planes_flattened  = [plane for planes in contour.bounding_box_planes for plane in planes]
+                bounding_planes_flattened  = [plane\
+                        for planes in contour.bounding_box_planes\
+                        for plane in planes]
                 for p in bounding_planes_flattened:
                     n,intersection = p.intersects_line(l, thresh)
                     if n == 1:
@@ -269,7 +272,8 @@ class Point(FiniteObject):
             return False
 
     def _find_bounding_box(self):
-        self.bounding_box = [(self[0],self[0]),(self[1],self[1]),(self[2],self[2])]
+        self.bounding_box = [(self[0],self[0]),(self[1],self[1]),\
+                             (self[2],self[2])]
 
 
 class Vector:
@@ -514,8 +518,13 @@ class Line:
             self._direction = -vector.normalise()
 
     def get_a_point(self):
-        """Point: Return a point on the line. The easiest point to return
+        """Return a point on the line. The easiest point to return
         is the anchor.
+
+        Returns
+        -------
+        Point
+            A point on the line -- chosen to be the anchor.
         """
         return self.anchor
 
@@ -677,45 +686,21 @@ class Line:
                     # <=> [d1 -d2] [lambda mu]T = a2 - a1
                     # Three equations, two unknowns, i.e.
                     # [d1 -d2] is a 3x2 rectangular matrix.
-                    # We solve for lambda and mu in all three pairs of
-                    # dimensions and check for consistency.
-                    # In some pairs, there might be no or infinitely
-                    # many solutions, hence singular matrices, hence
-                    # try-except blocks.
+                    # As we have established that the shortest distance
+                    # between the two lines is zero, there is guaranteed
+                    # to be a solution. We thus seek the pseudo-inverse
+                    # of [d1 -d2].
                     anchors = self.anchor.get_vector_to(other.anchor)
-                    coeffs = []
-                    try:
-                        directions_xy = np.array(\
+                    directions = np.array(\
                             [[self.direction[0], -other.direction[0]],\
-                             [self.direction[1], -other.direction[1]]])
-                        anchors_xy = anchors[0:2] 
-                        coeffs.append(np.dot(np.linalg.inv(directions_xy),\
-                                             anchors_xy))
-                    except:
-                        pass
-                    try:
-                        directions_yz = np.array(\
-                            [[self.direction[1], -other.direction[1]],\
+                             [self.direction[1], -other.direction[1]],\
                              [self.direction[2], -other.direction[2]]])
-                        anchors_yz = anchors[1:3] 
-                        coeffs.append(np.dot(np.linalg.inv(directions_yz),\
-                                             anchors_yz))
-                    except:
-                        pass
-                    try:
-                        directions_xz = np.array(\
-                            [[self.direction[0], -other.direction[0]],\
-                             [self.direction[2], -other.direction[2]]])
-                        anchors_xz = anchors[[0,2]] 
-                        coeffs.append(np.dot(np.linalg.inv(directions_xz),\
-                                             anchors_xz))
-                    except:
-                        pass
-                    assert len(coeffs) >= 1
-                    point_on_self = self.get_point(coeffs[0][0])
-                    point_on_other = other.get_point(coeffs[0][1])
-                    point_diff = point_on_self.get_vector_to(point_on_other)
-                    assert point_diff.norm < thresh
+                    sols = np.dot(np.linalg.pinv(directions),anchors[:])
+                    self_param = sols[0]
+                    other_param = sols[1]
+                    point_on_self = self.get_point(self_param)
+                    point_on_other = other.get_point(other_param)
+                    assert point_on_self.is_same_point(point_on_other)
                     return 1,point_on_self
                 else:
                     return 0,None
@@ -775,7 +760,7 @@ class Segment(FiniteObject):
         point = `anchor` + param * `direction`
 
     where param is a real parameter in a specified interval.
-    
+
     Two segments are equal if and only if their endpoints are equal.
 
     Parameters
@@ -831,8 +816,13 @@ class Segment(FiniteObject):
         return Line(self.endpoints[0], direction)
 
     def get_a_point(self):
-        """Point: Return a point on the segment. The easiest point to return
+        """Return a point on the segment. The easiest point to return
         is the midpoint.
+
+        Returns
+        -------
+        Point
+            A point on the segment -- chosen to be the midpoint.
         """
         return self.midpoint
 
@@ -841,8 +831,91 @@ class Segment(FiniteObject):
 
     __repr__ = __str__
 
+    def get_fraction_of_segment(self, mu, point, thresh=ZERO_TOLERANCE):
+        """Return a fraction of this segment.
+
+        Let A be `point`. A must be one of the endpoints of this segment.
+        Let B be the other endpoint of the segment. The segment AP is returned,
+        such that AP/AB = `mu`.
+
+        Parameters
+        ----------
+        `mu` : `float`
+            Fraction of the segment length. 0 < `mu` <= 1.
+        `point` : Point
+            The endpoint from which the fraction length is measured.
+        `thresh` : `float`
+            Threshold to determine ff `point` corresponds to one of the two
+            endpoints.
+
+        Returns
+        -------
+        Point
+            Point P.
+        Segment
+            Faction AP of this segment as defined above.
+        """
+        assert point.is_same_point(self.endpoints[0], thresh) or\
+               point.is_same_point(self.endpoints[1], thresh),\
+               '{} does not correspond to either endpoint of {}.'\
+               .format(point, self)
+
+        assert 0 < mu and mu <= 1, '{} lies outside (0,1].'.format(mu)
+
+        for endpoint in self.endpoints:
+            if point.is_same_point(endpoint, thresh):
+                A = endpoint
+            else:
+                B = endpoint
+        OA = Vector.from_point(A)
+        AB = A.get_vector_to(B)
+        AP = mu*AB
+        P = Point.from_vector(OA + AP)
+        return P,Segment([A, P])
+
+    def find_fraction(self, other, thresh=ZERO_TOLERANCE):
+        """Return the fraction corresponding to `other` relative to the
+        current segment.
+
+        Mathematically, let AP be `other` and AB the current segment.
+        Both AP and AB must share an endpoint, and P must lie on AB.
+        We seek mu = AP/AB.
+
+        Parameters
+        ----------
+        `other` : Segment
+            Segment AP as defined above.
+        `thresh` : `float`
+            Threshold to determine if the two segments share an endpoint, and
+            if P lies on AB.
+
+        Returns
+        -------
+        `float`
+            The value of `mu` as defined above.
+        """
+        if self.endpoints[0].is_same_point(other.endpoints[0], thresh):
+            A = self.endpoints[0]
+            P = other.endpoints[1]
+        elif self.endpoints[0].is_same_point(other.endpoints[1], thresh):
+            A = self.endpoints[0]
+            P = other.endpoints[0]
+        elif self.endpoints[1].is_same_point(other.endpoints[0], thresh):
+            A = self.endpoints[1]
+            P = other.endpoints[1]
+        elif self.endpoints[1].is_same_point(other.endpoints[1], thresh):
+            A = self.endpoints[1]
+            P = other.endpoints[0]
+        else:
+            raise AssertionError('{} and {} do not share an endpoint.'\
+                                 .format(self, other))
+        assert self.contains_point(P, thresh), '{} does not lie within {}.'\
+                                               .format(P, self)
+        return Segment([A,P]).length/self.length
+
+
     def get_cabinet_projection(self, a=np.arctan(2)):
-        """Segment: The cabinet projection of the current segment onto the
+        """Return the cabinet projection of the current segment onto the
         xy-plane.
 
         In a right-handed coordinate system, the cabinet projection projects
@@ -859,6 +932,11 @@ class Segment(FiniteObject):
         ----------
         a : `float`
             Angle (radians) of projection.
+
+        Returns
+        Segment
+           The cabinet projection of the current segment onto the
+        xy-plane.
         """
         A = self.endpoints[0]
         B = self.endpoints[1]
@@ -871,23 +949,31 @@ class Segment(FiniteObject):
         return not self.is_same_segment(other, ZERO_TOLERANCE)
 
     def __lt__(self, other):
-        comparison_tuple_self = (self.length, self.endpoints[0], self.endpoints[1])
-        comparison_tuple_other = (other.length, other.endpoints[0], other.endpoints[1])
+        comparison_tuple_self = (self.length, self.endpoints[0],\
+                                              self.endpoints[1])
+        comparison_tuple_other = (other.length, other.endpoints[0],\
+                                                other.endpoints[1])
         return comparison_tuple_self < comparison_tuple_other
 
     def __gt__(self, other):
-        comparison_tuple_self = (self.length, self.endpoints[0], self.endpoints[1])
-        comparison_tuple_other = (other.length, other.endpoints[0], other.endpoints[1])
+        comparison_tuple_self = (self.length, self.endpoints[0],\
+                                              self.endpoints[1])
+        comparison_tuple_other = (other.length, other.endpoints[0],\
+                                                other.endpoints[1])
         return comparison_tuple_self > comparison_tuple_other
 
     def __le__(self, other):
-        comparison_tuple_self = (self.length, self.endpoints[0], self.endpoints[1])
-        comparison_tuple_other = (other.length, other.endpoints[0], other.endpoints[1])
+        comparison_tuple_self = (self.length, self.endpoints[0],\
+                                              self.endpoints[1])
+        comparison_tuple_other = (other.length, other.endpoints[0],\
+                                                other.endpoints[1])
         return comparison_tuple_self <= comparison_tuple_other
 
     def __ge__(self, other):
-        comparison_tuple_self = (self.length, self.endpoints[0], self.endpoints[1])
-        comparison_tuple_other = (other.length, other.endpoints[0], other.endpoints[1])
+        comparison_tuple_self = (self.length, self.endpoints[0],\
+                                              self.endpoints[1])
+        comparison_tuple_other = (other.length, other.endpoints[0],\
+                                                other.endpoints[1])
         return comparison_tuple_self >= comparison_tuple_other
 
     def is_same_segment(self, other, thresh=ZERO_TOLERANCE):
@@ -933,13 +1019,7 @@ class Segment(FiniteObject):
             if AP.norm < thresh or BP.norm < thresh:
                 return True
             AB = self.endpoints[0].get_vector_to(self.endpoints[1])
-            for i in range(3):
-                if abs(AB[i]) >= thresh:
-                    ratio = AP[i]/AB[i]
-                    break
-            for i in range(3):
-                assert (abs(AP[i]-ratio*AB[i]) < thresh)
-            if -thresh <= ratio and ratio <= 1.0+thresh:
+            if abs(AB.norm - AP.norm - BP.norm) < thresh:
                 return True
             else:
                 return False
@@ -1013,28 +1093,32 @@ class Segment(FiniteObject):
                     return np.inf,other
                 else:
                     if other.contains_point(self.endpoints[0], thresh):
-                        intersection = Segment([self.endpoints[0],other.endpoints[0]])
+                        intersection = Segment([self.endpoints[0],\
+                                                other.endpoints[0]])
                         if intersection.length < thresh:
                             return 1,self.endpoints[0]
                         else:
                             return np.inf,intersection
                     else:
                         assert other.contains_point(self.endpoints[1], thresh)
-                        intersection = Segment([self.endpoints[1],other.endpoints[0]])
+                        intersection = Segment([self.endpoints[1],\
+                                                other.endpoints[0]])
                         if intersection.length < thresh:
                             return 1,self.endpoints[1]
                         else:
                             return np.inf,intersection
             elif self.contains_point(other.endpoints[1], thresh):
                 if other.contains_point(self.endpoints[0], thresh):
-                    intersection = Segment([self.endpoints[0],other.endpoints[1]])
+                    intersection = Segment([self.endpoints[0],\
+                                            other.endpoints[1]])
                     if intersection.length < thresh:
                         return 1,self.endpoints[0]
                     else:
                         return np.inf,intersection
                 else:
                     assert other.contains_point(self.endpoints[1], thresh)
-                    intersection = Segment([self.endpoints[1],other.endpoints[1]])
+                    intersection = Segment([self.endpoints[1],\
+                                            other.endpoints[1]])
                     if intersection.length < thresh:
                         return 1,self.endpoints[1]
                     else:
@@ -1042,30 +1126,65 @@ class Segment(FiniteObject):
             else:
                 return 0,None
 
-    def intersects_contour(self, contour, thresh=ZERO_TOLERANCE):
+    def intersects_plane(self, plane, thresh=ZERO_TOLERANCE):
+        """Check if the current segment intersects `plane`.
+
+        Parameters
+        ----------
+        plane : Plane
+            A plane to check for intersection with the current segment.
+        thresh : `float`
+            Threshold to determine if the segment and `plane` are parallel.
+
+        Returns
+        -------
+        n : int
+            Number of sintersection points.
+        intersection : None if `n` is zero, Point if `n` == 1,
+        Segment if `n` == `inf`.
+        """
+        n_plane,intersection_plane = self.associated_line.intersects_plane\
+                                        (contour.associated_plane, thresh)
+        if n_plane == 0:
+            return 0,None
+        elif n_plane == 1:
+            if self.contains_point(intersection_plane, thresh):
+                return 1,intersection_plane
+            else:
+                return 0,None
+        else:
+            return np.inf,self
+
+    def intersects_contour(self, contour, anchor, thresh=ZERO_TOLERANCE):
         """Check if the current segment intersects `contour` and find
         J-points and J-segments as defined by Hsu and Hock.
 
         Parameters
         ----------
         contour : Contour
-            A contour to check for intersection with the current contour.
+            A contour to check for intersection with the current segment.
+        anchor : Point
+            A point corresponding to one of the two endpoints of the current
+            segment. All J-points will be given a fraction relative to this
+            point.
         thresh : `float`
             Threshold to determine if the segment and `contour` are parallel.
 
         Returns
         -------
         n : int
-            Number of segments inside `contour`.
-        J_points : [Point]
-            List of J-points, including the endpoints of the current segment.
-        segments_inside : [Segment]
-            List of segments inside `contour`.
-        segments_outside : [Segment]
-            List of segments outside `contour`.
+            Number of intersection points.
+        J_points : [(Point,`float`)]
+            List of J-points and their associated fraction values.
+        segments_inside : [(Segment,`float`,`float`]
+            List of segments inside `contour` and the associated start and
+            end fraction values.
+        segments_outside : [Segment,`float`,`float`]
+            List of segments outside `contour` and the associated start and
+            end fraction values.
         """
         if not self.intersects_bounding_box(contour, thresh):
-            return 0,[],[]
+            return 0,[],[],[]
         else:
             n_plane,intersection_plane = self.associated_line.intersects_plane\
                                             (contour.associated_plane, thresh)
@@ -1073,91 +1192,42 @@ class Segment(FiniteObject):
             if n_plane == 1:
                 if self.contains_point(intersection_plane, thresh) and\
                         intersection_plane.is_inside_contour(contour, thresh):
-                    return 1,[intersection_plane],[]
+                    mu = self.find_fraction(\
+                            Segment([anchor,intersection_plane]))
+                    return 1,[(intersection_plane,mu)],[],[]
                 else:
-                    return 0,None
+                    return 0,[],[],[]
             else:
-                inside = []
-                if self.endpoints[0].is_inside_contour(contour, thresh):
-                    inside.append(self.endpoints[0])
-                if self.endpoints[1].is_inside_contour(contour, thresh):
-                    inside.append(self.endpoints[1])
-
-                # J_line = intersection_plane
                 J_points = []
+                edge_intersection_points = []
                 J_segments_inside = []
                 J_segments_outside = []
                 for edge in contour.edges:
                     n,J_point = self.intersects_segment(edge, thresh)
                     if n == 1:
-                        J_points.append(J_point)
-                J_points.append(self.endpoints[0])
-                J_points.append(self.endpoints[1])
-                J_points = sorted(J_points)
-                for i,point in enumerate(J_points[0:-1]):
-                    current_segment = Segment([J_points[i], J_points[i+1]])
+                        mu = self.find_fraction(Segment([anchor,J_point]))
+                        edge_intersection_points.append((J_point,mu))
+                for endpoint in self.endpoints:
+                    mu = self.find_fraction(Segment([anchor,endpoint]))
+                    edge_intersection_points.append((endpoint,mu))
+                edge_intersection_points = sorted(edge_intersection_points,\
+                                                  key = lambda t : t[1])
+                J_points.append(edge_intersection_points[0])
+                for i,point in enumerate(edge_intersection_points[0:-1]):
+                    current_segment = Segment([edge_intersection_points[i][0],\
+                                               edge_intersection_points[i+1][0]])
+                    mu_start = edge_intersection_points[i][1]
+                    mu_end = edge_intersection_points[i+1][1]
                     if current_segment.length < thresh:
                         continue
+                    J_points.append(edge_intersection_points[i+1])
                     if current_segment.midpoint.is_inside_contour(contour):
-                        J_segments_inside.append(current_segment)
+                        J_segments_inside.append((current_segment,\
+                                                  mu_start,mu_end))
                     else:
-                        J_segments_outside.append(current_segment)
-                return len(J_segments_inside),J_points,J_segments_inside,\
-                                                       J_segments_outside
-
-    # def intersects_contour(self, contour, thresh=ZERO_TOLERANCE):
-    #     """Check if the current segment intersects `contour`.
-
-    #     Parameters
-    #     ----------
-    #     contour : Contour
-    #         A contour to check for intersection with the current segment.
-    #     thresh : `float`
-    #         Threshold to determine if the shortest distance between the line
-    #         and the current segment is zero.
-
-    #     Returns
-    #     -------
-    #     n : int
-    #         Number of points of intersection.
-    #     intersection : None if `n` is zero, Point if `n` == 1, Segment if `n` == `inf`
-    #         FiniteObject.
-    #     """
-    #     if self.intersects_bounding_box(contour, thresh):
-    #         n_plane,intersection_plane = self.associated_line.intersects_plane\
-    #                                         (contour.associated_plane, thresh)
-    #         assert n_plane != 0
-    #         if n_plane == 1:
-    #             if self.contains_point(intersection_plane, thresh) and\
-    #                     intersection_plane.is_inside_contour(contour, thresh):
-    #                 return 1,intersection_plane
-    #             else:
-    #                 return 0,None
-    #         else:
-    #             inside = []
-    #             if self.endpoints[0].is_inside_contour(contour, thresh):
-    #                 inside.append(self.endpoints[0])
-    #             if self.endpoints[1].is_inside_contour(contour, thresh):
-    #                 inside.append(self.endpoints[1])
-    #             if len(inside) == 2:
-    #                 return np.inf,self
-    #             elif len(inside) == 0:
-    #                 return 0,None
-    #             else:
-    #                 for edge in contour.edges:
-    #                     n,intersection =\
-    #                         self.intersects_segment(edge, thresh)
-    #                     if n == 1:
-    #                         break
-    #                     else:
-    #                         continue
-    #             segment = Segment([inside[0],intersection])
-    #             if segment.length < thresh:
-    #                 return 1,inside[0]
-    #             else:
-    #                 return np.inf,segment
-    #     else:
-    #         return 0,None
+                        J_segments_outside.append((current_segment,\
+                                                   mu_start,mu_end))
+                return np.inf,J_points,J_segments_inside,J_segments_outside
 
     def _find_bounding_box(self):
         xmin = min(self.endpoints[0][0], self.endpoints[1][0])
@@ -1224,7 +1294,12 @@ class Plane:
         self._constant = value
 
     def get_a_point(self):
-        """Point: Return a point on the plane.
+        """Return a point on the plane.
+
+        Returns
+        -------
+        Point
+            A point on the plane.
         """
         return self._apoint
 
@@ -1486,8 +1561,13 @@ class Contour(FiniteObject):
         return not self.is_same_contour(other, ZERO_TOLERANCE)
 
     def get_a_point(self):
-        """Point: Return a point on the contour. The easiest point to return
+        """Return a point on the contour. The easiest point to return
         is the geometric centre.
+
+        Returns
+        -------
+        Point
+            A point on the contour -- chosen to be the geometric centre.
         """
         all_vertices = self.vertices
         vec_sum = Vector.from_point(all_vertices[0])
@@ -1683,8 +1763,14 @@ class Facet(FiniteObject):
     # __repr__ = __str__
 
     def get_a_point(self):
-        """Point: Return a point on the contour. The easiest point to return
+        """Return a point on the facet. The easiest point to return
         is the geometric centre of the first contour.
+
+        Returns
+        -------
+        Point
+            A point on the facet -- chosen to be the geometric centre of the
+            first contour.
         """
         return self.contours[0].get_a_point()
 
@@ -1753,7 +1839,8 @@ class Polyhedron(FiniteObject):
     def edges(self):
         """[Segment]: A list of segments defining the polyhedron.
         """
-        edges = [contour.edges for facet in self.facets for contour in facet.contours]
+        edges = [contour.edges for facet in self.facets\
+                               for contour in facet.contours]
         edges_flattened = [edge for edge_list in edges for edge in edge_list]
         edges_sorted = sorted(edges_flattened)
         edges_unique = [edges_sorted[0]]

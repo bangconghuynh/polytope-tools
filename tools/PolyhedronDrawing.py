@@ -98,4 +98,3 @@ class PolyhedronDrawing():
                         continue
                     else:
                         pass
-
