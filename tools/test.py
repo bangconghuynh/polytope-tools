@@ -5,29 +5,28 @@ from .PolyhedronDrawing import PolyhedronDrawing
 
 def main():
     A = Point([0,0,0])
-    B = Point([3,0,0])
-    C = Point([3,4,0])
-    D = Point([2,4,0])
+    B = Point([2,0,0])
+    C = Point([0,2,0])
+    D = Point([1,1,1])
     E = Point([2,2,0])
     F = Point([1,2,0])
     G = Point([1,4,0])
     H = Point([0,4,0])
 
 
-    # fABC = Facet([Contour.from_vertices([A,B,C])])
-    # fABD = Facet([Contour.from_vertices([A,B,D])])
-    # fACD = Facet([Contour.from_vertices([A,C,D])])
-    # fBCD = Facet([Contour.from_vertices([B,C,D])])
+    fABC = Facet([Contour.from_vertices([A,B,C])])
+    fABD = Facet([Contour.from_vertices([A,B,D])])
+    fACD = Facet([Contour.from_vertices([A,C,D])])
+    fBCD = Facet([Contour.from_vertices([B,C,D])])
 
-    # pABCD = Polyhedron([fABC, fABD, fACD, fBCD])
+    pABCD = Polyhedron([fABC, fABD, fACD, fBCD])
 
-    # scene = PolyhedronDrawing([pABCD])
+    scene = PolyhedronDrawing([pABCD])
+    visible,hidden = scene.get_visible_hidden_segments()
 
-    cABCDEFGH = Contour.from_vertices([A,B,C,D,E,F,G,H])
-    I = Point([2,1,0])
-    J = Point([5,1,0])
-    sIJ = Segment([G,D])
-    print(sIJ.intersects_contour(cABCDEFGH, G))
+    print(visible)
+    print(hidden)
+
 
 if __name__ == '__main__':
     main()

@@ -242,6 +242,7 @@ class Point(FiniteObject):
                         for plane in planes]
                 for p in bounding_planes_flattened:
                     n,intersection = p.intersects_line(l, thresh)
+                    print(p, n, intersection)
                     if n == 1:
                         if intersection.is_same_point(self, thresh):
                             continue
@@ -841,7 +842,7 @@ class Segment(FiniteObject):
         Parameters
         ----------
         `mu` : `float`
-            Fraction of the segment length. 0 < `mu` <= 1.
+            Fraction of the segment length. 0 <= `mu` <= 1.
         `point` : Point
             The endpoint from which the fraction length is measured.
         `thresh` : `float`
@@ -860,7 +861,7 @@ class Segment(FiniteObject):
                '{} does not correspond to either endpoint of {}.'\
                .format(point, self)
 
-        assert 0 < mu and mu <= 1, '{} lies outside (0,1].'.format(mu)
+        assert 0 <= mu and mu <= 1, '{} lies outside [0,1].'.format(mu)
 
         for endpoint in self.endpoints:
             if point.is_same_point(endpoint, thresh):
@@ -1140,11 +1141,10 @@ class Segment(FiniteObject):
         -------
         n : int
             Number of sintersection points.
-        intersection : None if `n` is zero, Point if `n` == 1,
-        Segment if `n` == `inf`.
+        intersection : None if `n` is zero, Point if `n` == 1, Segment if `n` == `inf`
         """
         n_plane,intersection_plane = self.associated_line.intersects_plane\
-                                        (contour.associated_plane, thresh)
+                                        (plane, thresh)
         if n_plane == 0:
             return 0,None
         elif n_plane == 1:
