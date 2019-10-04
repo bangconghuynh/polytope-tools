@@ -4,7 +4,7 @@ geometrical objects.
 
 import numpy as np
 import operator
-from scipy.spatial import ConvexHull
+from scipy.spatial.transform import Rotation
 
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
 
@@ -235,34 +235,66 @@ class Point(FiniteObject):
                 for edge in contour.edges:
                     if edge.contains_point(self, thresh):
                         return True
-                edge_midpoint = contour.edges[0].midpoint
-                l = Segment([self,edge_midpoint]).associated_line
-                bounding_planes_flattened  = [plane\
-                        for planes in contour.bounding_box_planes\
-                        for plane in planes]
-                for p in bounding_planes_flattened:
-                    n,intersection = p.intersects_line(l, thresh)
-                    print(p, n, intersection)
-                    if n == 1:
-                        if intersection.is_same_point(self, thresh):
-                            continue
-                        else:
-                            is_vertex = False
-                            for vertex in contour.vertices:
-                                if intersection.is_same_point(vertex, thresh):
-                                    is_vertex = True
-                                    break
-                            if is_vertex:
-                                continue
-                            else:
-                                break
-                    else:
-                        continue
-                test_segment = Segment([self,intersection])
+                # Transform into the xy-plane
+                n = contour.associated_plane.normal
+                z = Vector([0,0,1])
+                redges_xy = []
+                if n.cross(z).norm >= thresh:
+                    # Contour not approximately parallel to xy-plane
+                    if n[2] < 0:
+                        n = -n
+                    rvec = n.cross(z).normalise()
+                    rang = np.arccos(n.dot(z))
+                    rself = rotate_point(self, rang, rvec)
+                    rself_xy = Point([rself[0], rself[1], 0])
+                    for edge in contour.edges:
+                        rendpoint0 = rotate_point(edge.endpoints[0], rang, rvec)
+                        rendpoint1 = rotate_point(edge.endpoints[1], rang, rvec)
+                        rendpoint0_xy = Point([rendpoint0[0], rendpoint0[1], 0])
+                        rendpoint1_xy = Point([rendpoint1[0], rendpoint1[1], 0])
+                        redges_xy.append(Segment([rendpoint0_xy, rendpoint1_xy]))
+                else:
+                    rself_xy = Point([self[0], self[1], 0])
+                    for edge in contour.edges:
+                        rendpoint0 = edge.endpoints[0]
+                        rendpoint1 = edge.endpoints[1]
+                        rendpoint0_xy = Point([rendpoint0[0], rendpoint0[1], 0])
+                        rendpoint1_xy = Point([rendpoint1[0], rendpoint1[1], 0])
+                        redges_xy.append(Segment([rendpoint0_xy, rendpoint1_xy]))
+
+                rcontour_xy = Contour(redges_xy)
+                print("3D:", self, contour)
+                print("2D:", rself_xy, rcontour_xy)
+                xmax = rcontour_xy.bounding_box[0][1]
+                test_segment = Segment([rself_xy,\
+                                        Point([xmax+1,rself_xy[1]])])
                 n_intersections_with_edges = 0
-                for edge in contour.edges:
-                    if test_segment.intersects_segment(edge, thresh)[0] == 1:
+                n_intersections_with_vertices = 0
+                for i,test_edge in enumerate(redges_xy):
+                    n,intersection = test_segment.intersects_segment(test_edge)
+                    if n == 1:
                         n_intersections_with_edges += 1
+                        if intersection.is_same_point(test_edge.endpoints[0]) or\
+                           intersection.is_same_point(test_edge.endpoints[1]):
+                            prev_edge = redges_xy[i-1]
+                            if intersection.is_same_point(prev_edge.endpoints[0])\
+                            or intersection.is_same_point(prev_edge.endpoints[1]):
+                                shared_edge = prev_edge
+                            else:
+                                continue
+                            test_segment_vec = test_segment.endpoints[0]\
+                                    .get_vector_to(test_segment.endpoints[1])
+                            test_edge_vec = rself_xy\
+                                    .get_vector_to(test_edge.get_a_point())
+                            shared_edge_vec = rself_xy\
+                                    .get_vector_to(shared_edge.get_a_point())
+                            value = test_segment_vec.cross(test_edge_vec).dot\
+                                    (test_segment_vec.cross(shared_edge_vec))
+                            if value < 0:
+                                n_intersections_with_vertices += 1
+                print(n_intersections_with_edges)
+                print(n_intersections_with_vertices)
+                n_intersections_with_edges -= n_intersections_with_vertices
                 if n_intersections_with_edges % 2 == 0:
                     return False
                 else:
@@ -1574,7 +1606,7 @@ class Contour(FiniteObject):
         for vertex in all_vertices[1:]:
             vec_sum = vec_sum + Vector.from_point(vertex)
         centre = Point.from_vector(vec_sum/len(all_vertices))
-        print(centre)
+        print(centre, self)
         assert centre.is_inside_contour(self)
         return centre
 
@@ -1900,3 +1932,51 @@ class Polyhedron(FiniteObject):
         ymax = max([facet.bounding_box[1][1] for facet in self.facets])
         zmax = max([facet.bounding_box[2][1] for facet in self.facets])
         self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
+
+
+def rotate(vector, angle, direction):
+    """Wrapper method to apply a scipy Rotation object to a vector.
+
+    Parameters
+    ----------
+    vector : Vector
+        A vector for which the rotation is applied.
+    angle : `float`
+        The angle of rotation (radians).
+    direction : Vector
+        A normalised vector indicating the rotation axis. The angle-axis
+        parametrisation for rotation applies.
+
+    Returns
+    -------
+    Vector
+        The rotated result for `vector`.
+    """
+    direction_array = direction.components
+    vector_array = vector.components
+    R = Rotation.from_rotvec(angle*direction_array)
+    rotated_vector_array = R.apply(vector_array)
+    return Vector(rotated_vector_array)
+
+
+def rotate_point(point, angle, direction):
+    """Wrapper method to apply a scipy Rotation object to a point
+    about the origin.
+
+    Parameters
+    ----------
+    point : Point
+        A vector for which the rotation is applied.
+    angle : `float`
+        The angle of rotation (radians).
+    direction : Vector
+        A normalised vector indicating the rotation axis. The angle-axis
+        parametrisation for rotation applies.
+
+    Returns
+    -------
+    Point
+        The rotated result for `point`.
+    """
+    vector = Vector.from_point(point)
+    return Point.from_vector(rotate(vector, angle, direction))
