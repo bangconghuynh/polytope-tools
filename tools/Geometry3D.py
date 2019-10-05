@@ -196,7 +196,7 @@ class Point(FiniteObject):
         x = self[0]
         y = self[1]
         z = self[2]
-        return Point([x+0.5*z*np.cos(a), y+0.5*z*np.sin(a), 0])
+        return Point([x-0.5*z*np.cos(a), y-0.5*z*np.sin(a), 0])
 
     def is_same_point(self, other, thresh=ZERO_TOLERANCE):
         """Check if the current point is the same as `other`.
@@ -263,8 +263,6 @@ class Point(FiniteObject):
                         redges_xy.append(Segment([rendpoint0_xy, rendpoint1_xy]))
 
                 rcontour_xy = Contour(redges_xy)
-                print("3D:", self, contour)
-                print("2D:", rself_xy, rcontour_xy)
                 xmax = rcontour_xy.bounding_box[0][1]
                 test_segment = Segment([rself_xy,\
                                         Point([xmax+1,rself_xy[1]])])
@@ -292,8 +290,6 @@ class Point(FiniteObject):
                                     (test_segment_vec.cross(shared_edge_vec))
                             if value < 0:
                                 n_intersections_with_vertices += 1
-                print(n_intersections_with_edges)
-                print(n_intersections_with_vertices)
                 n_intersections_with_edges -= n_intersections_with_vertices
                 if n_intersections_with_edges % 2 == 0:
                     return False
@@ -1606,7 +1602,6 @@ class Contour(FiniteObject):
         for vertex in all_vertices[1:]:
             vec_sum = vec_sum + Vector.from_point(vertex)
         centre = Point.from_vector(vec_sum/len(all_vertices))
-        print(centre, self)
         assert centre.is_inside_contour(self)
         return centre
 
@@ -1630,8 +1625,6 @@ class Contour(FiniteObject):
         else:
             self_edges_sorted = sorted(self.edges)
             other_edges_sorted = sorted(other.edges)
-            print(self_edges_sorted)
-            print(other_edges_sorted)
             for i in range(len(self_edges_sorted)):
                 if self_edges_sorted[i] == other_edges_sorted[i]:
                     continue

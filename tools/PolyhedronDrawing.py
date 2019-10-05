@@ -88,15 +88,21 @@ class PolyhedronDrawing():
         hidden = []
         for edge in self.all_edges:
             previous_segments_visible = [copy.deepcopy(edge)]
+            print("Beginning edge {}".format(edge))
             for test_facet in self.all_facets:
+                print("Analysing edge {} w.r.t {}...".format(edge, test_facet))
                 updated_segments_visible = []
                 updated_segments_hidden = []
                 front_normal = test_facet.get_front_normal(self.viewing_vector)
+                print("Front normal: {}".format(front_normal))
                 facet_point = test_facet.get_a_point()
                 test_facet_2D = test_facet.\
                                     get_cabinet_projection(self.cabinet_angle)
+                print('Currently visible segments:\n{}'
+                        .format(previous_segments_visible))
                 while len(previous_segments_visible) > 0:
                     test_segment = previous_segments_visible.pop()
+                    print("Testing {}...".format(test_segment))
                     back_segment = False
                     test_segment_2D = test_segment.\
                                     get_cabinet_projection(self.cabinet_angle)
@@ -114,21 +120,29 @@ class PolyhedronDrawing():
                             fe_vector = facet_point.get_vector_to(edge_point)
                             if fe_vector.dot(front_normal) > 0:
                                 # Segment in front of facet
+                                print("{} lies in front of {}"\
+                                        .format(test_segment, test_facet))
                                 updated_segments_visible.append(test_segment)
                                 continue
                             else:
                                 # Segment on the back of facet
                                 # Needs further testing
+                                print("{} lies behind {}"\
+                                        .format(test_segment, test_facet))
                                 back_test_segment = test_segment
                                 back_segment = True
                         elif n_plane == np.inf:
                             # Segment on plane
+                            print("{} lies on {}"\
+                                    .format(test_segment, test_facet))
                             updated_segments_visible.append(test_segment)
                             continue
                         elif n_plane == 1:
                             # Segment intersects plane
                             # Front fraction always visible
                             # Back fraction needs testing
+                            print("{} intersects plane of {}"\
+                                    .format(test_segment, test_facet))
                             for endpoint in test_segment.endpoints:
                                 fe_vector = facet_point.get_vector_to\
                                                 (endpoint)
@@ -136,15 +150,21 @@ class PolyhedronDrawing():
                                     front_test_segment = Segment([\
                                                 endpoint,\
                                                 intersection_plane])
+                                    print("Front portion: {}"\
+                                            .format(front_test_segment))
                                 elif fe_vector.dot(front_normal) < -thresh:
                                     back_test_segment = Segment([\
                                                 endpoint,\
                                                 intersection_plane])
                                     back_segment = True
+                                    print("Back portion: {}"\
+                                            .format(back_test_segment))
                                 else:
                                     # This endpoint lies on the plane.
                                     continue
                             updated_segments_visible.append(front_test_segment)
+                            print("Added visible segment {}"\
+                                    .format(front_test_segment))
 
                         if not back_segment:
                             continue
@@ -152,6 +172,7 @@ class PolyhedronDrawing():
                         # If get to this point, back_test_segment exists.
                         # We can only handle facets consisting of one contour
                         # at the moment.
+                        print("Analysing back portion...")
                         assert len(test_facet.contours) == 1,\
                             'We can only handle facets consisting of\
                              one contour at the moment.'
@@ -161,10 +182,16 @@ class PolyhedronDrawing():
                                 .get_cabinet_projection(self.cabinet_angle)
                         intersection_plane_2D = intersection_plane\
                                 .get_cabinet_projection(self.cabinet_angle)
+                        print("Back portion (2D): {}"\
+                                .format(back_test_segment_2D))
+                        print("Contour (2D): {}"\
+                                .format(test_contour_2D))
+                        print("Point of intersection (2D): {}"\
+                                .format(intersection_plane_2D))
                         n,J_points,segments_2D_hidden,segments_2D_visible =\
                                 back_test_segment_2D.intersects_contour\
                                         (test_contour_2D, intersection_plane_2D)
-
+                        print("n, J_points:", n, J_points)
                         # We need to convert the 2D information back to 3D data.
                         # We need 3D data for further testing with other facets.
                         # For parallel projection, mu is the same in both 3D
@@ -175,12 +202,16 @@ class PolyhedronDrawing():
                             B = back_test_segment.get_fraction_of_segment\
                                         (mu_end, intersection_plane)[0]
                             updated_segments_hidden.append(Segment([A,B]))
+                            print("Added hidden segment {}"\
+                                    .format(Segment([A,B])))
                         for (segments_2D, mu_start, mu_end) in segments_2D_visible:
                             A = back_test_segment.get_fraction_of_segment\
                                         (mu_start, intersection_plane)[0]
                             B = back_test_segment.get_fraction_of_segment\
                                         (mu_end, intersection_plane)[0]
                             updated_segments_visible.append(Segment([A,B]))
+                            print("Added visible segment {}"\
+                                    .format(Segment([A,B])))
                 # End of while; no more segments left in previous_segments_visible for
                 # this facet
 
@@ -189,6 +220,8 @@ class PolyhedronDrawing():
 
                 # Saving all segments from this edge hidden by this facet.
                 for segment in updated_segments_hidden:
+                    print("Adding {} hidden by {}"\
+                            .format(segment,test_facet))
                     hidden.append(segment)
 
             # End of for; no more facets left for this edge.
