@@ -1,98 +1,59 @@
-#!/usr/bin/env python2
-
-"""
-@module PolytopeTools
+"""`PolytopeTools` contains classes and methods for constructing convex hulls
+of polytope 3D-projections and converting them into polyhedra.
 """
 
-import sys
+import copy
 import numpy as np
-import sympy as sp
-from itertools import compress
-from sympy import sympify
-from sympy.geometry import Point
-from sympy.parsing.sympy_parser import parse_expr
-from sympy.solvers.solveset import nonlinsolve
+from scipy.spatial import ConvexHull
 
-from ..QCMagicRC import GlobalOptions
+from .Geometry3D import Contour, ZERO_TOLERANCE
 
+def construct_convex_hull(vertices, thresh=ZERO_TOLERANCE):
+    """A method to convert a three-dimensional convex hull into a Polyhedron
+    object.
 
-def expand(x):
-    # endows point vectors in the sequence x with an additional zero component
+    Parameters
+    ----------
+    vertices : [Point]
+        A list of all vertices to be analysed.
+    thresh : float
+        Threshold to check if vertices are coplanar.
+    """
+    coords = np.zeros((len(vertices),3))
+    for i,vertex in enumerate(vertices):
+        coords[i,:] = vertex.coordinates
+    hull = ConvexHull(coords)
+    print(hull.simplices)
+    print(hull.neighbors)
 
-    for i,xi in enumerate(x):
-        x[i] = np.append(x[i], 0.0)
-
-
-def square_distance(x1, x2):
-    diff = x2 - x1
-    sqdiff = map(lambda x: x**2, diff)
-    return sum(sqdiff)
-
-
-def intersectSpheres(centres, sqradii, thresh=1e-6):
-    # returns the list of solutions of the intersections of spheres with centres in list centres and corresponding squared radii in list sqradii
-
-    K = centres[0].shape[0] # dimension of the affine span of the centres
-    r = sp.symbols('r0:%d'%(K+1))
-
-    system=[]
-    for icentre,centre in enumerate(centres):
-        strExpr = ""
-        for icomponent,component in enumerate(centre):
-            strExpr += "({}-{})**2".format(r[icomponent], component)
-            if icomponent != K-1:
-                strExpr += " + "
-            else:
-                strExpr += " + ({})**2 - {}".format(r[icomponent+1], sqradii[icentre])
-
-        Expr = parse_expr(strExpr, evaluate=False)
-        system.append(Expr)
-
-    rawSols = nonlinsolve(system, list(r)).args
-    if len(rawSols) == 2:
-        if sp.Abs(rawSols[0][-1]) < thresh and sp.Abs(rawSols[1][-1]) < thresh:
-            allSols = [tuple(list(rawSols[0])[0:-1])]
-        elif sp.Abs(rawSols[0][-1]) > thresh and sp.Abs(rawSols[1][-1]) > thresh:
-            allSols = [sol for sol in rawSols]
-    elif len(rawSols) == 1:
-        allSols = [tuple(list(rawSols[0])[0:-1])]
-    realMask = map(lambda x: all(map(lambda xi: xi.is_real, x)), allSols)
-    realSols = list(compress(allSols, realMask))
-
-    return realSols
-
-
-def edmsph(D, thresh=1e-6):
-
-    I = [0, 1] # Indices of existing vertices
-    K = 1
-    n = D.shape[0]
-    x = [np.array([0.0]), np.array([np.sqrt(D[1,0])])] # Existing vertices
-    for i in range(2, n):
-        sqradiiconsidered = [D[i,j] for j in I]
-        centresconsidered = [x[m] for m in I]
-        gamma = intersectSpheres(centresconsidered, sqradiiconsidered, thresh)
-
-        if len(gamma) == 0:
-            print 'No solutions found.'
-            sys.exit(1)
-        elif len(gamma) == 1:
-            x.append(np.array(gamma[0], dtype=float))
-        elif len(gamma) == 2:
-            expand(x)
-            K += 1
-            for sol in gamma:
-                if sol[-1] >= 0:
-                    x.append(np.array(sol, dtype=float))
-            I.append(i)
+    # In 3D, all simplices of the convex hull are triangles. We need to
+    # identify and merge coplanar simplices.
+    simplex_indices = list(range(len(hull.simplices)))
+    coplanar = []
+    coplanar_detected = False
+    while len(simplex_indices) > 0:
+        if not coplanar_detected:
+            coplanar.append([])
+            i_simplex = simplex_indices.pop()
+            coplanar[-1].append(i_simplex)
         else:
-            print 'Something wrong!'
-
-    print "Embedded dimension found:", K
-    print "Threshold:", thresh
-
-    # points = []
-    # for i in x:
-    #     points.append(i)
-
-    return x, K
+            coplanar_detected = False
+            i_simplex = coplanar[-1][-1]
+        simplex_vertices = hull.simplices[i_simplex]
+        simplex_plane = Contour.from_vertices([vertices[i]\
+                                for i in simplex_vertices]).associated_plane
+        neighbor_indices = hull.neighbors[i_simplex]
+        for i_neighbor in neighbor_indices:
+            neighbor_vertices = hull.simplices[i_neighbor]
+            for i in neighbor_vertices:
+                if i in simplex_vertices:
+                    continue
+                else:
+                    unshared_neighbor_vertex = i
+                    break
+            if simplex_plane.contains_point(vertices[unshared_neighbor_vertex]):
+                if i_neighbor in simplex_indices:
+                    simplex_indices.remove(i_neighbor)
+                    coplanar[-1].append(i_neighbor)
+                    coplanar_detected = True
+    print(coplanar)
