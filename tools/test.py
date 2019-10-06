@@ -18,16 +18,19 @@ def main():
     F = Point([2,0,2])
     G = Point([2,2,2])
     H = Point([0,2,2])
+    polyhedron = construct_convex_hull([A,B,C,D,E,F,G,H])
+    scene = PolyhedronDrawing([polyhedron])
+    pp.pprint(scene.visible_segments)
+    pp.pprint(scene.hidden_segments)
 
-
-    I = Point([1,1,0])
-    J = Point([2,0,0])
-    K = Point([1,-1,0])
-    L = Point([-1,-1,0])
-    M = Point([-2,0,0])
-    N = Point([-1,1,0])
-    O = Point([0,0,1])
-    construct_convex_hull([I,J,K,L,M,N,O])
+    # I = Point([1,1,0])
+    # J = Point([2,0,0])
+    # K = Point([1,-1,0])
+    # L = Point([-1,-1,0])
+    # M = Point([-2,0,0])
+    # N = Point([-1,1,0])
+    # O = Point([0,0,1])
+    # construct_convex_hull([I,J,K,L,M,N,O])
 
 if __name__ == '__main__':
     main()
