@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
 
 # Constants
-ZERO_TOLERANCE = 1e-14
+ZERO_TOLERANCE = 1e-13
 
 class FiniteObject:
     """A generic finite geometrical object in a three-dimensional Euclidean space.
@@ -197,6 +197,7 @@ class Point(FiniteObject):
         y = self[1]
         z = self[2]
         return Point([x-0.5*z*np.cos(a), y-0.5*z*np.sin(a), 0])
+        # return Point([y-0.5*x*np.cos(a), z-0.5*x*np.sin(a), 0])
 
     def is_same_point(self, other, thresh=ZERO_TOLERANCE):
         """Check if the current point is the same as `other`.
@@ -442,6 +443,7 @@ class Vector:
         y = self[1]
         z = self[2]
         return Vector([x-0.5*z*np.cos(a), y-0.5*z*np.sin(a), 0])
+        # return Vector([y-0.5*x*np.cos(a), z-0.5*x*np.sin(a), 0])
 
     def dot(self, other):
         """Dot product between the current vector and `other`.

@@ -3,14 +3,15 @@ two-dimensional projections of three-dimensional polyhedra.
 """
 
 import numpy as np
-import copy
+import copy, textwrap
 
 from .Geometry3D import Vector, Polyhedron, Segment, ZERO_TOLERANCE
 
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
 
-class PolyhedronDrawing():
-    """A class to contain, manage, and draw multiple polyhedra in three dimensions.
+class Scene():
+    """A class to contain, manage, and draw multiple polyhedra in a
+    three-dimensional scene.
 
     Parameters
     ----------
@@ -18,13 +19,15 @@ class PolyhedronDrawing():
         A list of polyhedra in the scene.
     a : float
         Cabinet projection angle (radians).
+    thresh : float
+        Threshold for various comparisons.
     """
 
-    def __init__(self, polyhedra, a=np.arctan(2)):
+    def __init__(self, polyhedra, a=np.arctan(2), thresh=ZERO_TOLERANCE):
         self.polyhedra = polyhedra
         self.cabinet_angle = a
         self.visible_segments,self.hidden_segments =\
-                self._get_visible_hidden_segments()
+                self._get_visible_hidden_segments(thresh)
 
     @property
     def polyhedra(self):
@@ -37,6 +40,13 @@ class PolyhedronDrawing():
         for polyhedron in polyhedra:
             assert isinstance(polyhedron, Polyhedron)
         self._polyhedra = polyhedra
+
+    @property
+    def all_vertices(self):
+        """[Point]: A list of all vertices in the scene.
+        """
+        return [vertex for polyhedron in self.polyhedra\
+                     for vertex in polyhedron.vertices]
 
     @property
     def all_edges(self):
@@ -79,6 +89,7 @@ class PolyhedronDrawing():
         """
         a = self.cabinet_angle
         return Vector([0.5*np.cos(a),0.5*np.sin(a),1]).normalise()
+        # return Vector([1, 0.5*np.cos(a),0.5*np.sin(a)]).normalise()
 
     @property
     def visible_segments(self):
@@ -241,3 +252,97 @@ class PolyhedronDrawing():
                 visible.append(segment)
 
         return visible,hidden
+
+    def write_to_tikz(self, output):
+        """Write the current scene to a standalone TeX file.
+
+        Parameters
+        ----------
+        output : `str`
+            Output file name.
+        """
+        preamble_str =\
+                """\
+                \\documentclass[tikz]{standalone}
+                \\PassOptionsToPackage{svgnames}{xcolor}
+                \\usepackage{pgfplots}
+                \\pgfplotsset{compat=1.16}
+                \\usetikzlibrary{calc, luamath, positioning}
+
+                \\begin{document}
+                \\begin{tikzpicture}
+                """
+
+        vertices_str =\
+                """
+                    % Coordinate definition\
+                """
+        vertex_labels = []
+        for pi,polyhedron in enumerate(self.polyhedra):
+            vertex_labels.append([])
+            vertices_str = vertices_str + \
+                """
+                    % Polyhedron {}\
+                """.format(pi)
+            for vi,vertex in enumerate(polyhedron.vertices):
+                vertex_2D = vertex.get_cabinet_projection(self.cabinet_angle)
+                x,y = vertex_2D[0],vertex_2D[1]
+                vertices_str = vertices_str + \
+                """
+                    \\coordinate (p{}v{}) at ({},{});\
+                """.format(pi, vi, x, y)
+                vertex_labels[-1].append('p{}v{}'.format(pi, vi))
+            vertices_str = vertices_str + "\n"
+
+        visible_str =\
+                """
+                    % Visible segments\
+                """
+        for segment_2D in self.visible_segments_2D:
+            xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
+            xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
+            visible_str = visible_str + \
+                """
+                    \\draw ({},{}) -- ({},{});\
+                """.format(xstart, ystart, xend, yend)
+        visible_str = visible_str + "\n"
+
+        hidden_str =\
+                """
+                    % Hidden segments\
+                """
+        for segment_2D in self.hidden_segments_2D:
+            xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
+            xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
+            hidden_str = hidden_str + \
+                """
+                    \\draw[opacity=0.25] ({},{}) -- ({},{});\
+                """.format(xstart, ystart, xend, yend)
+        hidden_str = hidden_str + "\n"
+
+        vertices_plot_str =\
+                """
+                    % Plot vertices\
+                """
+        for polyhedron_vertex_labels in vertex_labels:
+            vertices_plot_str = vertices_plot_str +  \
+                """
+                    % Polyhedron {}
+                    \\foreach \\vertex in {{{}}} \\node at (\\vertex)\
+                    [circle, fill = blue, draw = black, inner sep=1pt]{{}};
+                """.format(pi, ','.join(polyhedron_vertex_labels))
+
+        end_str =\
+                """
+                \\end{tikzpicture}
+                \\end{document}
+                """
+
+        all_str = preamble_str +\
+                  vertices_str +\
+                  visible_str +\
+                  hidden_str +\
+                  vertices_plot_str +\
+                  end_str
+        with open(output, 'w') as f:
+            f.write(textwrap.dedent(all_str))
