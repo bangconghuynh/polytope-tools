@@ -5,9 +5,13 @@ two-dimensional projections of three-dimensional polyhedra.
 import numpy as np
 import copy, textwrap
 
-from .Geometry3D import Vector, Polyhedron, Segment, ZERO_TOLERANCE
+from .Geometry3D import Point, Vector, Segment, Contour, Facet,\
+                        Polyhedron, rotate_point, ZERO_TOLERANCE
 
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
+
+polyhedron_color_list = ['blue', 'red', 'green', 'DarkViolet', 'DarkCyan',\
+                         'FireBrick', 'NavyBlue', 'Fuchsia']
 
 class Scene():
     """A class to contain, manage, and draw multiple polyhedra in a
@@ -26,8 +30,7 @@ class Scene():
     def __init__(self, polyhedra, a=np.arctan(2), thresh=ZERO_TOLERANCE):
         self.polyhedra = polyhedra
         self.cabinet_angle = a
-        self.visible_segments,self.hidden_segments =\
-                self._get_visible_hidden_segments(thresh)
+        self._thresh = thresh
 
     @property
     def polyhedra(self):
@@ -103,6 +106,16 @@ class Scene():
         self._visible_segments = visible
 
     @property
+    def visible_vertices(self):
+        """[Point]: The visible vertices w.r.t. the current viewing vector.
+        """
+        return self._visible_vertices
+
+    @visible_vertices.setter
+    def visible_vertices(self, visible):
+        self._visible_vertices = visible
+
+    @property
     def hidden_segments(self):
         """[Segment]: The hidden segments of the edges w.r.t. the current
         viewing vector.
@@ -114,20 +127,97 @@ class Scene():
         self._hidden_segments = hidden
 
     @property
+    def hidden_vertices(self):
+        """[Point]: The hidden vertices w.r.t. the current viewing vector.
+        """
+        return self._hidden_vertices
+
+    @hidden_vertices.setter
+    def hidden_vertices(self, hidden):
+        self._hidden_vertices = hidden
+
+    @property
     def visible_segments_2D(self):
         """[Segment]: The visible segments of the edges w.r.t. the current
         viewing vector in the cabinet projection.
         """
-        return [s.get_cabinet_projection(self.cabinet_angle)\
-                for s in self.visible_segments]
+        return list(map(lambda sublist :\
+                [s.get_cabinet_projection(self.cabinet_angle)\
+                 for s in sublist], self.visible_segments))
+
+    @property
+    def visible_vertices_2D(self):
+        """[Point]: The visible vertices w.r.t. the current viewing vector
+        in the cabinet projection.
+        """
+        return list(map(lambda sublist :\
+                [v.get_cabinet_projection(self.cabinet_angle)\
+                 for v in sublist], self.visible_vertices))
 
     @property
     def hidden_segments_2D(self):
         """[Segment]: The hidden segments of the edges w.r.t. the current
         viewing vector in the cabinet projection.
         """
-        return [s.get_cabinet_projection(self.cabinet_angle)\
-                for s in self.hidden_segments]
+        return list(map(lambda sublist :\
+                [s.get_cabinet_projection(self.cabinet_angle)\
+                 for s in sublist], self.hidden_segments))
+
+    @property
+    def hidden_vertices_2D(self):
+        """[Point]: The hidden vertices w.r.t. the current viewing vector
+        in the cabinet projection.
+        """
+        return list(map(lambda sublist :\
+                [v.get_cabinet_projection(self.cabinet_angle)\
+                 for v in sublist], self.hidden_vertices))
+
+    def centre_scene(self):
+        """Translate all polyhedra in the scene such that the geometric centre
+        is at the origin.
+        """
+        vecsum = Vector()
+        for vertex in self.all_vertices:
+            vecsum = vecsum + Vector.from_point(vertex)
+        centre_vector = vecsum/len(self.all_vertices)
+        centred_polyhedra = []
+        for polyhedron in self.polyhedra:
+            centred_facets = []
+            for facet in polyhedron.facets:
+                centred_contours = []
+                for contour in facet.contours:
+                    centred_edges = []
+                    for edge in contour.edges:
+                        centred_edges.append(Segment(\
+                            list(map(lambda\
+                            x : Point.from_vector(\
+                            Vector.from_point(x)-centre_vector),\
+                            edge.endpoints))))
+                    centred_contours.append(Contour(centred_edges))
+                centred_facets.append(Facet(centred_contours))
+            centred_polyhedra.append(Polyhedron(centred_facets))
+        self.__init__(centred_polyhedra, self.cabinet_angle, self._thresh)
+
+    def rotate_scene(self, angle, direction):
+        """Rotate the entire scene through an angle `angle` about the vector
+        `direction`.
+        """
+        rotated_polyhedra = []
+        for polyhedron in self.polyhedra:
+            rotated_facets = []
+            for facet in polyhedron.facets:
+                rotated_contours = []
+                for contour in facet.contours:
+                    rotated_edges = []
+                    for edge in contour.edges:
+                        rotated_edges.append(Segment(\
+                            list(map(lambda\
+                            x : rotate_point(x, angle, direction),\
+                            edge.endpoints))))
+                    rotated_contours.append(Contour(rotated_edges))
+                rotated_facets.append(Facet(rotated_contours))
+            rotated_polyhedra.append(Polyhedron(rotated_facets))
+        self.__init__(rotated_polyhedra, self.cabinet_angle, self._thresh)
 
     def _get_visible_hidden_segments(self, thresh=ZERO_TOLERANCE):
         # Visibility is only meaningful in the projected view, so we check for
@@ -135,68 +225,71 @@ class Scene():
         # However, we store all segments in the full object space.
         visible = []
         hidden = []
-        for edge in self.all_edges:
-            previous_segments_visible = [copy.deepcopy(edge)]
-            for test_facet in self.all_facets:
-                updated_segments_visible = []
-                updated_segments_hidden = []
-                front_normal = test_facet.get_front_normal(self.viewing_vector)
-                facet_point = test_facet.get_a_point()
-                test_facet_2D = test_facet.\
-                                    get_cabinet_projection(self.cabinet_angle)
-                while len(previous_segments_visible) > 0:
-                    test_segment = previous_segments_visible.pop()
-                    back_segment = False
-                    back_segment_parallel = False
-                    test_segment_2D = test_segment.\
-                                    get_cabinet_projection(self.cabinet_angle)
-                    if not test_segment_2D.intersects_bounding_box(test_facet_2D):
-                        # test_segment not covered by test_facet in 2D projection
-                        updated_segments_visible.append(test_segment)
-                        continue
-                    else:
-                        n_plane,intersection_plane =\
-                                test_segment.intersects_plane\
-                                        (test_facet.associated_plane, thresh)
-                        if n_plane == 0:
-                            # Segment parallel to plane of facet
-                            edge_point = test_segment.get_a_point()
-                            fe_vector = facet_point.get_vector_to(edge_point)
-                            if fe_vector.dot(front_normal) > 0:
-                                # Segment in front of facet
-                                updated_segments_visible.append(test_segment)
-                                continue
-                            else:
-                                # Segment on the back of facet
-                                # Needs further testing
-                                back_test_segment = test_segment
-                                back_segment = True
-                                back_segment_parallel = True
-                        elif n_plane == np.inf:
-                            # Segment on plane
+        for polyhedron in self.polyhedra:
+            visible.append([])
+            hidden.append([])
+            for edge in polyhedron.edges:
+                previous_segments_visible = [copy.deepcopy(edge)]
+                for test_facet in self.all_facets:
+                    updated_segments_visible = []
+                    updated_segments_hidden = []
+                    front_normal = test_facet.get_front_normal(self.viewing_vector)
+                    facet_point = test_facet.get_a_point()
+                    test_facet_2D = test_facet.\
+                                        get_cabinet_projection(self.cabinet_angle)
+                    while len(previous_segments_visible) > 0:
+                        test_segment = previous_segments_visible.pop()
+                        back_segment = False
+                        back_segment_parallel = False
+                        test_segment_2D = test_segment.\
+                                        get_cabinet_projection(self.cabinet_angle)
+                        if not test_segment_2D.intersects_bounding_box(test_facet_2D):
+                            # test_segment not covered by test_facet in 2D projection
                             updated_segments_visible.append(test_segment)
                             continue
-                        elif n_plane == 1:
-                            # Segment intersects plane
-                            # Front fraction always visible
-                            # Back fraction needs testing
-                            for endpoint in test_segment.endpoints:
-                                fe_vector = facet_point.get_vector_to\
-                                                (endpoint)
-                                if fe_vector.dot(front_normal) > thresh:
-                                    front_test_segment = Segment([\
-                                                endpoint,\
-                                                intersection_plane])
-                                    updated_segments_visible.append(\
-                                            front_test_segment)
-                                elif fe_vector.dot(front_normal) < -thresh:
-                                    back_test_segment = Segment([\
-                                                endpoint,\
-                                                intersection_plane])
-                                    back_segment = True
-                                else:
-                                    # This endpoint lies on the plane.
+                        else:
+                            n_plane,intersection_plane =\
+                                    test_segment.intersects_plane\
+                                            (test_facet.associated_plane, thresh)
+                            if n_plane == 0:
+                                # Segment parallel to plane of facet
+                                edge_point = test_segment.get_a_point()
+                                fe_vector = facet_point.get_vector_to(edge_point)
+                                if fe_vector.dot(front_normal) > 0:
+                                    # Segment in front of facet
+                                    updated_segments_visible.append(test_segment)
                                     continue
+                                else:
+                                    # Segment on the back of facet
+                                    # Needs further testing
+                                    back_test_segment = test_segment
+                                    back_segment = True
+                                    back_segment_parallel = True
+                            elif n_plane == np.inf:
+                                # Segment on plane
+                                updated_segments_visible.append(test_segment)
+                                continue
+                            elif n_plane == 1:
+                                # Segment intersects plane
+                                # Front fraction always visible
+                                # Back fraction needs testing
+                                for endpoint in test_segment.endpoints:
+                                    fe_vector = facet_point.get_vector_to\
+                                                    (endpoint)
+                                    if fe_vector.dot(front_normal) > thresh:
+                                        front_test_segment = Segment([\
+                                                    endpoint,\
+                                                    intersection_plane])
+                                        updated_segments_visible.append(\
+                                                front_test_segment)
+                                    elif fe_vector.dot(front_normal) < -thresh:
+                                        back_test_segment = Segment([\
+                                                    endpoint,\
+                                                    intersection_plane])
+                                        back_segment = True
+                                    else:
+                                        # This endpoint lies on the plane.
+                                        continue
 
                         if not back_segment:
                             continue
@@ -204,63 +297,142 @@ class Scene():
                         # If get to this point, back_test_segment exists.
                         # We can only handle facets consisting of one contour
                         # at the moment.
-                        assert len(test_facet.contours) == 1,\
-                            'We can only handle facets consisting of\
-                             one contour at the moment.'
+                        # assert len(test_facet.contours) == 1,\
+                        #     'We can only handle facets consisting of\
+                        #      one contour at the moment.'
                         back_test_segment_2D = back_test_segment\
                                 .get_cabinet_projection(self.cabinet_angle)
-                        test_contour_2D = test_facet.contours[0]\
-                                .get_cabinet_projection(self.cabinet_angle)
-                        if back_segment_parallel:
-                            anchor = back_test_segment.endpoints[0]
+                        # test_contour_2D = test_facet.contours[0]\
+                        #         .get_cabinet_projection(self.cabinet_angle)
+                        if back_test_segment_2D.intersects_bounding_box\
+                                (test_facet_2D):
+                            if back_segment_parallel:
+                                anchor = back_test_segment.endpoints[0]
+                            else:
+                                anchor = intersection_plane
+                            anchor_2D = anchor\
+                                    .get_cabinet_projection(self.cabinet_angle)
+                            n,J_points,segments_2D_hidden,segments_2D_visible =\
+                                    back_test_segment_2D.intersects_facet\
+                                            (test_facet_2D, anchor_2D)
+                            # We need to convert the 2D information back to 3D data.
+                            # We need 3D data for further testing with other facets.
+                            # For parallel projection, mu is the same in both 3D
+                            # and 2D.
+                            for (segments_2D, mu_start, mu_end) in segments_2D_hidden:
+                                A = back_test_segment.get_fraction_of_segment\
+                                            (mu_start, anchor)[0]
+                                B = back_test_segment.get_fraction_of_segment\
+                                            (mu_end, anchor)[0]
+                                updated_segments_hidden.append(Segment([A,B]))
+                            for (segments_2D, mu_start, mu_end) in segments_2D_visible:
+                                A = back_test_segment.get_fraction_of_segment\
+                                            (mu_start, anchor)[0]
+                                B = back_test_segment.get_fraction_of_segment\
+                                            (mu_end, anchor)[0]
+                                updated_segments_visible.append(Segment([A,B]))
                         else:
-                            anchor = intersection_plane
-                        anchor_2D = anchor\
-                                .get_cabinet_projection(self.cabinet_angle)
-                        n,J_points,segments_2D_hidden,segments_2D_visible =\
-                                back_test_segment_2D.intersects_contour\
-                                        (test_contour_2D, anchor_2D)
-                        # We need to convert the 2D information back to 3D data.
-                        # We need 3D data for further testing with other facets.
-                        # For parallel projection, mu is the same in both 3D
-                        # and 2D.
-                        for (segments_2D, mu_start, mu_end) in segments_2D_hidden:
-                            A = back_test_segment.get_fraction_of_segment\
-                                        (mu_start, anchor)[0]
-                            B = back_test_segment.get_fraction_of_segment\
-                                        (mu_end, anchor)[0]
-                            updated_segments_hidden.append(Segment([A,B]))
-                        for (segments_2D, mu_start, mu_end) in segments_2D_visible:
-                            A = back_test_segment.get_fraction_of_segment\
-                                        (mu_start, anchor)[0]
-                            B = back_test_segment.get_fraction_of_segment\
-                                        (mu_end, anchor)[0]
-                            updated_segments_visible.append(Segment([A,B]))
-                # End of while; no more segments left in
-                # previous_segments_visible for this facet
+                            updated_segments_visible.append(back_test_segment)
+                    # End of while; no more segments left in
+                    # previous_segments_visible for this facet
 
-                # Preparing for the next facet
-                previous_segments_visible = updated_segments_visible
+                    # Preparing for the next facet
+                    previous_segments_visible = updated_segments_visible
 
-                # Saving all segments from this edge hidden by this facet.
-                for segment in updated_segments_hidden:
-                    hidden.append(segment)
+                    # Saving all segments from this edge hidden by this facet.
+                    for segment in updated_segments_hidden:
+                        hidden[-1].append(segment)
 
-            # End of for; no more facets left for this edge.
-            # Saving all visible segments from this edge.
-            for segment in updated_segments_visible:
-                visible.append(segment)
+                # End of for; no more facets left for this edge.
+                # Saving all visible segments from this edge.
+                for segment in updated_segments_visible:
+                    visible[-1].append(segment)
 
         return visible,hidden
 
-    def write_to_tikz(self, output):
+    def _get_visible_hidden_vertices(self, thresh=ZERO_TOLERANCE):
+        # Visibility is only meaningful in the projected view, so we check for
+        # visibility  of any back vertices in the projected view.
+        # However, we store all vertices in the full object space.
+        visible = []
+        hidden = []
+        for polyhedron in self.polyhedra:
+            visible.append([])
+            hidden.append([])
+            for vertex in polyhedron.vertices:
+                previous_vertex_visible = [copy.deepcopy(vertex)]
+                for test_facet in self.all_facets:
+                    updated_vertex_visible = []
+                    front_normal = test_facet.get_front_normal(self.viewing_vector)
+                    facet_point = test_facet.get_a_point()
+                    test_facet_2D = test_facet.\
+                                    get_cabinet_projection(self.cabinet_angle)
+                    while len(previous_vertex_visible) > 0:
+                        test_vertex = previous_vertex_visible.pop()
+                        test_vertex_2D = test_vertex.\
+                                        get_cabinet_projection(self.cabinet_angle)
+                        if not test_vertex_2D.intersects_bounding_box(test_facet_2D):
+                            # test_vertex not covered by test_facet in 2D projection
+                            updated_vertex_visible.append(test_vertex)
+                            continue
+                        else:
+                            # test_vertex covered by test_facet in 2D projection
+                            if test_facet.associated_plane.contains_point\
+                                    (test_vertex, thresh):
+                                # Vertex on facet's plane and is visible w.r.t.
+                                # this facet
+                                updated_vertex_visible.append(test_vertex)
+                                continue
+                            else:
+                                # Vertex off-plane
+                                fv_vector = facet_point.get_vector_to\
+                                                (test_vertex)
+                                if fv_vector.dot(front_normal) > thresh:
+                                    # Vertex lies in front
+                                    updated_vertex_visible.append(test_vertex)
+                                    continue
+                                elif fv_vector.dot(front_normal) < -thresh:
+                                    # Vertex lies behind
+                                    back_vertex = True
+                                else:
+                                    # This vertex lies on the plane.
+                                    updated_vertex_visible.append(test_vertex)
+                                    continue
+
+                        if not back_vertex:
+                            continue
+
+                        # If get to this point, back_vertex is true.
+                        if test_vertex_2D.is_inside_facet(test_facet_2D):
+                            hidden[-1].append(test_vertex)
+                            break
+                        else:
+                            updated_vertex_visible.append(test_vertex)
+
+                    # Preparing for the next facet
+                    previous_vertex_visible = updated_vertex_visible
+
+                # End of for; no more facets left for this vertex.
+                for vertex in updated_vertex_visible:
+                    visible[-1].append(vertex)
+
+        return visible,hidden
+
+    def write_to_tikz(self, output, bb=None):
         """Write the current scene to a standalone TeX file.
 
         Parameters
         ----------
         output : `str`
             Output file name.
+        bb : list of tuples
+            [(xmin,xmax),(ymin,ymax)]
         """
+        self.visible_segments,self.hidden_segments =\
+                self._get_visible_hidden_segments(self._thresh)
+        self.visible_vertices,self.hidden_vertices =\
+                self._get_visible_hidden_vertices(self._thresh)
+
         preamble_str =\
                 """\
                 \\documentclass[tikz]{standalone}
@@ -272,65 +444,90 @@ class Scene():
                 \\begin{document}
                 \\begin{tikzpicture}
                 """
+        if bb is not None:
+            (xmin,xmax) = bb[0]
+            (ymin,ymax) = bb[1]
+            preamble_str = preamble_str +\
+                """
+                    \\useasboundingbox ({},{}) rectangle ({},{});
+                """.format(xmin,ymin,xmax,ymax)
 
-        vertices_str =\
+        all_str = preamble_str
+
+        for pi,polyhedron in enumerate(self.polyhedra):
+            color = polyhedron_color_list[pi]
+
+            vertex_labels = []
+            vertices_str =\
                 """
                     % Coordinate definition\
                 """
-        vertex_labels = []
-        for pi,polyhedron in enumerate(self.polyhedra):
-            vertex_labels.append([])
             vertices_str = vertices_str + \
                 """
+                    %%%%%%%%%%%%%%%%
                     % Polyhedron {}\
                 """.format(pi)
-            for vi,vertex in enumerate(polyhedron.vertices):
-                vertex_2D = vertex.get_cabinet_projection(self.cabinet_angle)
-                x,y = vertex_2D[0],vertex_2D[1]
-                vertices_str = vertices_str + \
+            vi = 0
+            visible_vertices_str =\
                 """
-                    \\coordinate (p{}v{}) at ({},{});\
-                """.format(pi, vi, x, y)
-                vertex_labels[-1].append('p{}v{}'.format(pi, vi))
-            vertices_str = vertices_str + "\n"
+                    % Visible vertices\
+                """
+            for vertex_2D in self.visible_vertices_2D[pi]:
+                vi += 1
+                x,y = vertex_2D[0],vertex_2D[1]
+                visible_vertices_str = visible_vertices_str + \
+                """
+                \\node at ({},{})\
+                    [circle, fill = {}, draw = black, inner sep=1pt]{{}};
+                """.format(x, y, color)
 
-        visible_str =\
+
+            hidden_vertices_str =\
+                """
+                    % Hidden vertices\
+                """
+            for vertex_2D in self.hidden_vertices_2D[pi]:
+                vi += 1
+                x,y = vertex_2D[0],vertex_2D[1]
+                hidden_vertices_str = hidden_vertices_str + \
+                """
+                \\node at ({},{})\
+                    [circle, fill = {}!50!white, draw = black!50!white,\
+                    inner sep=1pt]{{}};
+                """.format(x, y, color)
+            hidden_vertices_str = hidden_vertices_str + "\n"
+
+            visible_str =\
                 """
                     % Visible segments\
                 """
-        for segment_2D in self.visible_segments_2D:
-            xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
-            xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
-            visible_str = visible_str + \
+            for segment_2D in self.visible_segments_2D[pi]:
+                xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
+                xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
+                visible_str = visible_str + \
                 """
-                    \\draw ({},{}) -- ({},{});\
-                """.format(xstart, ystart, xend, yend)
-        visible_str = visible_str + "\n"
+                    \\draw[{}] ({},{}) -- ({},{});\
+                """.format(color, xstart, ystart, xend, yend)
+            visible_str = visible_str + "\n"
 
-        hidden_str =\
+            hidden_str =\
                 """
                     % Hidden segments\
                 """
-        for segment_2D in self.hidden_segments_2D:
-            xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
-            xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
-            hidden_str = hidden_str + \
+            for segment_2D in self.hidden_segments_2D[pi]:
+                xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
+                xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
+                hidden_str = hidden_str + \
                 """
-                    \\draw[opacity=0.25] ({},{}) -- ({},{});\
-                """.format(xstart, ystart, xend, yend)
-        hidden_str = hidden_str + "\n"
+                    \\draw[{}, opacity=0.25] ({},{}) -- ({},{});\
+                """.format(color, xstart, ystart, xend, yend)
+            hidden_str = hidden_str + "\n"
 
-        vertices_plot_str =\
-                """
-                    % Plot vertices\
-                """
-        for polyhedron_vertex_labels in vertex_labels:
-            vertices_plot_str = vertices_plot_str +  \
-                """
-                    % Polyhedron {}
-                    \\foreach \\vertex in {{{}}} \\node at (\\vertex)\
-                    [circle, fill = blue, draw = black, inner sep=1pt]{{}};
-                """.format(pi, ','.join(polyhedron_vertex_labels))
+            all_str = all_str +\
+                    hidden_str +\
+                    visible_str +\
+                    hidden_vertices_str +\
+                    visible_vertices_str
 
         end_str =\
                 """
@@ -338,11 +535,7 @@ class Scene():
                 \\end{document}
                 """
 
-        all_str = preamble_str +\
-                  vertices_str +\
-                  visible_str +\
-                  hidden_str +\
-                  vertices_plot_str +\
-                  end_str
+        all_str = all_str + end_str
+
         with open(output, 'w') as f:
             f.write(textwrap.dedent(all_str))

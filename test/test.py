@@ -1,7 +1,7 @@
 #!python3
 
 import sys, copy
-sys.path.append('/home/dorebase2006/code/bang/polytope-tools')
+sys.path.append('..')
 import numpy as np
 from tools.Geometry3D import Point, Vector, Line, Segment, Plane, Contour, Facet, Polyhedron, rotate
 from tools.PolyhedronDrawing import Scene
@@ -11,28 +11,26 @@ import pprint
 
 def main():
     pp = pprint.PrettyPrinter(indent=4)
-    A = Point([2,2,0])
-    B = Point([-2,2,0])
-    C = Point([0,-2,2])
-    D = Point([0,-2,-2])
-    E = Point([1,2,1])
-    F = Point([2,0,2])
-    G = Point([2,2,2])
-    H = Point([0,2,2])
-    polyhedron = construct_convex_hull([A,B,C,D])
+    for i in range(10):
+        print(i)
+        A = Point([-1,0,-1])
+        B = Point([1,0,-1])
+        C = Point([1,0,1])
+        D = Point([-1,0,1])
+        E = Point([0,1+0.1*i,0])
+        F = Point([0,-1-0.1*i,0])
+        polyhedron1 = construct_convex_hull([A,B,C,D,E,F])
 
-    I = Point([1,1,0])
-    J = Point([2,0,0])
-    K = Point([1,-1,0])
-    L = Point([-1,-1,0])
-    M = Point([-2,0,0])
-    N = Point([-1,1,0])
-    O = Point([0,0,1])
-    # polyhedron = construct_convex_hull([I,J,K,L,M,N,O])
-    for a in range(10):
-        print(0.5+a*0.1)
-        scene = Scene([polyhedron], 0.5+a*0.1)
-        scene.write_to_tikz('test.{}.tex'.format(str(0.5+a*0.1)))
+        G = Point([1.5,1.5,0])
+        H = Point([-1.5,1.5,0])
+        I = Point([0,-1.5,1.5])
+        J = Point([0,-1.5,-1.5])
+        polyhedron2 = construct_convex_hull([G,H,I,J])
+
+        scene = Scene([polyhedron1,polyhedron2], 1.0)
+        scene.centre_scene()
+        scene.rotate_scene(-0.05*i, Vector([0,1,0]))
+        scene.write_to_tikz('test.{}.tex'.format(str(i)), [(-2.2,2.2),(-2.3,2.1)])
 
 if __name__ == '__main__':
     main()

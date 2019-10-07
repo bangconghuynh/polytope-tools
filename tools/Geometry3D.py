@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
 
 # Constants
-ZERO_TOLERANCE = 1e-13
+ZERO_TOLERANCE = 1e-12
 
 class FiniteObject:
     """A generic finite geometrical object in a three-dimensional Euclidean space.
@@ -300,6 +300,32 @@ class Point(FiniteObject):
                 return False
         else:
             return False
+
+    def is_inside_facet(self, facet, thresh=ZERO_TOLERANCE):
+        """Check if the current point lies inside the facet `facet`.
+        If the facet consists of multiple contours, then the inside
+        of the facet is defined by the XOR operation (Hsu & Hock).
+
+        Parameters
+        ----------
+        facet : Facet
+            A facet in the same Euclidean space.
+        thresh : `float`
+            Threshold.
+
+        Returns
+        -------
+        `bool`
+            `True` if the current point lies inside `facet`, `False` if not.
+        """
+        n_inside_contours = 0
+        for contour in facet.contours:
+            if self.is_inside_contour(contour, thresh):
+                n_inside_contours += 1
+        if n_inside_contours % 2 == 0:
+            return False
+        else:
+            return True
 
     def _find_bounding_box(self):
         self.bounding_box = [(self[0],self[0]),(self[1],self[1]),\
@@ -1259,6 +1285,83 @@ class Segment(FiniteObject):
                                                    mu_start,mu_end))
                 return np.inf,J_points,J_segments_inside,J_segments_outside
 
+    def intersects_facet(self, facet, anchor, thresh=ZERO_TOLERANCE):
+        """Check if the current segment intersects `facet` and find
+        J-points and J-segments as defined by Hsu and Hock.
+
+        Parameters
+        ----------
+        facet : Facet
+            A facet to check for intersection with the current segment.
+        anchor : Point
+            A point corresponding to one of the two endpoints of the current
+            segment. All J-points will be given a fraction relative to this
+            point.
+        thresh : `float`
+            Threshold to determine if the segment and `contour` are parallel.
+
+        Returns
+        -------
+        n : int
+            Number of intersection points.
+        J_points : [(Point,`float`)]
+            List of J-points and their associated fraction values.
+        segments_inside : [(Segment,`float`,`float`]
+            List of segments inside `contour` and the associated start and
+            end fraction values.
+        segments_outside : [Segment,`float`,`float`]
+            List of segments outside `contour` and the associated start and
+            end fraction values.
+        """
+        if not self.intersects_bounding_box(facet, thresh):
+            return 0,[],[],[]
+        else:
+            n_plane,intersection_plane = self.associated_line.intersects_plane\
+                                            (facet.associated_plane, thresh)
+            assert n_plane != 0
+            if n_plane == 1:
+                if self.contains_point(intersection_plane, thresh) and\
+                        intersection_plane.is_inside_facet(facet, thresh):
+                    mu = self.find_fraction(\
+                            Segment([anchor,intersection_plane]))
+                    return 1,[(intersection_plane,mu)],[],[]
+                else:
+                    return 0,[],[],[]
+            else:
+                # Segment lies on the same plane as facet and possibly
+                # overlaps with facet
+                J_points = []
+                edge_intersection_points = []
+                J_segments_inside = []
+                J_segments_outside = []
+                for contour in facet.contours:
+                    for edge in contour.edges:
+                        n,J_point = self.intersects_segment(edge, thresh)
+                        if n == 1:
+                            mu = self.find_fraction(Segment([anchor,J_point]))
+                            edge_intersection_points.append((J_point,mu))
+                    for endpoint in self.endpoints:
+                        mu = self.find_fraction(Segment([anchor,endpoint]))
+                        edge_intersection_points.append((endpoint,mu))
+                edge_intersection_points = sorted(edge_intersection_points,\
+                                                key = lambda t : t[1])
+                J_points.append(edge_intersection_points[0])
+                for i,point in enumerate(edge_intersection_points[0:-1]):
+                    current_segment = Segment([edge_intersection_points[i][0],\
+                                            edge_intersection_points[i+1][0]])
+                    mu_start = edge_intersection_points[i][1]
+                    mu_end = edge_intersection_points[i+1][1]
+                    if current_segment.length < thresh:
+                        continue
+                    J_points.append(edge_intersection_points[i+1])
+                    if current_segment.midpoint.is_inside_facet(facet):
+                        J_segments_inside.append((current_segment,\
+                                                mu_start,mu_end))
+                    else:
+                        J_segments_outside.append((current_segment,\
+                                                mu_start,mu_end))
+                return np.inf,J_points,J_segments_inside,J_segments_outside
+
     def _find_bounding_box(self):
         xmin = min(self.endpoints[0][0], self.endpoints[1][0])
         ymin = min(self.endpoints[0][1], self.endpoints[1][1])
@@ -1388,7 +1491,7 @@ class Plane:
             FiniteObject.
         """
         ddotn = line.direction.dot(self.normal)
-        if ddotn < thresh:
+        if abs(ddotn) < thresh:
             if self.contains_point(line.anchor):
                 return np.inf,line
             else:
@@ -1529,7 +1632,7 @@ class Contour(FiniteObject):
 
     @property
     def vertices(self):
-        """[Point]: A lsit of all unique vertices in this contour.
+        """[Point]: A list of all unique vertices in this contour.
         """
         unique_vertices = []
         for i in range(len(self.edges)):
