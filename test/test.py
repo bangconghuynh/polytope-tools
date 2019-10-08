@@ -4,8 +4,8 @@ import sys, copy
 sys.path.append('..')
 import numpy as np
 from tools.Geometry3D import Point, Vector, Line, Segment, Plane, Contour, Facet, Polyhedron
-from tools.PolyhedronDrawing import Scene, polyhedra_from_xyz
-from tools.PolytopeTools import construct_convex_hull
+from tools.PolyhedronDrawing import Scene
+from tools.PolytopeTools import construct_convex_hull, polyhedra_from_xyz
 from scipy.spatial import ConvexHull
 import pprint
 
@@ -33,7 +33,10 @@ import pprint
 #         scene.write_to_tikz('test.{}.tex'.format(str(i)), [(-2.2,2.2),(-2.3,2.1)])
 
 def main():
-    polyhedra_from_xyz('H2.ionic.short.g0.xc0.all.transformed.xyz')
+    p = polyhedra_from_xyz('H2.ionic.short.g0.xc0.all.transformed.xyz')
+    scene = Scene(p)
+    scene.centre_scene()
+    scene.write_to_tikz('test.xyz.tex')
 
 if __name__ == '__main__':
     main()
