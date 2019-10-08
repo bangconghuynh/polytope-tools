@@ -3,10 +3,12 @@ two-dimensional projections of three-dimensional polyhedra.
 """
 
 import numpy as np
+import re
 import copy, textwrap
 
 from .Geometry3D import Point, Vector, Segment, Contour, Facet,\
                         Polyhedron, rotate_point, ZERO_TOLERANCE
+from .PolytopeTools import construct_convex_hull_from_coords
 
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
 
@@ -539,3 +541,46 @@ class Scene():
 
         with open(output, 'w') as f:
             f.write(textwrap.dedent(all_str))
+
+
+def polyhedra_from_xyz(xyz_file):
+    """Method to parse an xyz file of vertices and construct convex polyhedra.
+    Vertices belonging to the same polyhedron share the same atomic label.
+    """
+
+    polyhedron_dict = {}
+    polyhedron_list = []
+    type_order = []
+    with open(xyz_file, 'r') as f:
+        lines = f.readlines()
+        for i in range(len(lines)):
+            line = lines[i].strip()
+            if i == 0:
+                l = re.search("\d+$", line)
+                n_points = int(l.group())
+            elif i == 1:
+                l = re.search("\d+$", line)
+                K = int(l.group())
+            else:
+                if line == '':
+                    continue
+                l = re.search("([^ \t\d]+)\s+", line)
+                assert l is not None
+                point_type = l.group(1)
+                l = re.findall("[+-]?\d+\.\d+", line)
+                point_coordinates = []
+                for coordinate in l:
+                    point_coordinates.append(coordinate)
+                assert len(point_coordinates) == K
+                if point_type not in polyhedron_dict:
+                    polyhedron_dict[point_type] = []
+                polyhedron_dict[point_type].append(point_coordinates)
+                if point_type not in point_order:
+                    point_order.append(point_type)
+
+        for point_type in polyhedron_dict.keys():
+            polyhedron_dict[point_type] = np.array(polyhedron_dict[point_type])
+
+        for point_type in point_order:
+            polyhedron_list.append(construct_convex_hull_from_coords\
+                                        (polyhedron_dict[point_type]))
