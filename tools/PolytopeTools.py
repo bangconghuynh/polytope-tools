@@ -73,7 +73,6 @@ def construct_convex_hull_from_coords(coords):
         polyhedron = Polyhedron(facets)
     elif dim == 2:
         hull = qconvex("Fx", coords)
-        print(hull)
         n_hull_vertices = int(hull[0])
         hull_vertices = []
         for vertex_str in hull[1:]:
@@ -107,10 +106,10 @@ def polyhedra_from_xyz(xyz_file):
             else:
                 if line == '':
                     continue
-                l = re.search("([^ \t\d]+)\s+", line)
+                l = re.search("([A-Za-z]+[0-9]*)[\s\t]+", line)
                 assert l is not None
                 point_type = l.group(1)
-                l = re.findall("[+-]?\d+\.?\d*", line)
+                l = re.findall("[+-]?\d+\.\d*", line)
                 point_coordinates = []
                 for coordinate in l:
                     point_coordinates.append(float(coordinate))
@@ -123,10 +122,18 @@ def polyhedra_from_xyz(xyz_file):
 
         for point_type in type_order:
             n_vertices = len(polyhedron_dict[point_type])
-            assert n_vertices > dim, 'There are too few vertices for a\
-                    meaningful description of a polygon or a polyhedron.'
-            polyhedron_dict[point_type] = np.array(polyhedron_dict[point_type])
-            polyhedron_list.append(construct_convex_hull_from_coords\
-                                    (polyhedron_dict[point_type]))
+            if dim == 3 and n_vertices == 3:
+                vertices = []
+                for point_coords in polyhedron_dict[point_type]:
+                    vertices.append(Point(np.array(point_coords)))
+                contour = Contour.from_vertices(vertices)
+                facet = Facet([contour])
+                polyhedron_list.append(Polyhedron([facet])) 
+            else:
+                assert n_vertices > dim, 'There are too few vertices for a\
+                        meaningful description of a polygon or a polyhedron.'
+                polyhedron_dict[point_type] = np.array(polyhedron_dict[point_type])
+                polyhedron_list.append(construct_convex_hull_from_coords\
+                                        (polyhedron_dict[point_type]))
 
     return polyhedron_list

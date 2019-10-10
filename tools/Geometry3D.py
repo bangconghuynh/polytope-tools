@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation
 ## Implementation of hidden line removal algorithm for interesecting solids -- Wei-I Hsu and J. L. Hock, Comput. & Graphics Vol. 15, No. 1, pp 67--86, 1991
 
 # Constants
-ZERO_TOLERANCE = 1e-12
+ZERO_TOLERANCE = 1e-14
 
 class FiniteObject:
     """A generic finite geometrical object in a three-dimensional Euclidean space.
@@ -214,6 +214,7 @@ class Point(FiniteObject):
         `bool`
             `True` if the two points are the same, `False` if not.
         """
+        # print(self.get_vector_to(other).norm)
         return self.get_vector_to(other).norm < thresh
 
     def is_inside_contour(self, contour, thresh=ZERO_TOLERANCE):
@@ -276,8 +277,10 @@ class Point(FiniteObject):
                         if intersection.is_same_point(test_edge.endpoints[0]) or\
                            intersection.is_same_point(test_edge.endpoints[1]):
                             prev_edge = redges_xy[i-1]
-                            if intersection.is_same_point(prev_edge.endpoints[0])\
-                            or intersection.is_same_point(prev_edge.endpoints[1]):
+                            if intersection.is_same_point(prev_edge.endpoints[0],\
+                                    thresh)\
+                            or intersection.is_same_point(prev_edge.endpoints[1],\
+                                    thresh):
                                 shared_edge = prev_edge
                             else:
                                 continue
@@ -752,12 +755,13 @@ class Line:
                             [[self.direction[0], -other.direction[0]],\
                              [self.direction[1], -other.direction[1]],\
                              [self.direction[2], -other.direction[2]]])
-                    sols = np.dot(np.linalg.pinv(directions),anchors[:])
+                    # sols = np.dot(np.linalg.pinv(directions),anchors[:])
+                    sols = np.linalg.lstsq(directions, anchors[:], rcond=None)[0]
                     self_param = sols[0]
                     other_param = sols[1]
                     point_on_self = self.get_point(self_param)
                     point_on_other = other.get_point(other_param)
-                    assert point_on_self.is_same_point(point_on_other)
+                    # assert point_on_self.is_same_point(point_on_other, thresh)
                     return 1,point_on_self
                 else:
                     return 0,None
@@ -2029,6 +2033,80 @@ class Polyhedron(FiniteObject):
         xmax = max([facet.bounding_box[0][1] for facet in self.facets])
         ymax = max([facet.bounding_box[1][1] for facet in self.facets])
         zmax = max([facet.bounding_box[2][1] for facet in self.facets])
+        self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
+
+
+class VertexCollection(FiniteObject):
+    """A `VertexCollection` in a three-dimensional Euclidean space is
+    essentially a polyhedron but only with vertices defined. They might not be
+    convex, and so no facets or contours are constructed. Edges are segments
+    joining all pairs of vertices.
+
+    Parameters
+    ----------
+    vertices : [Point]
+        A list of vertices defining the `VertexCollection`.
+    """
+
+    def __init__(self, vertices):
+        self.vertices = vertices
+        self._find_bounding_box()
+
+    @property
+    def vertices(self):
+        """[Point]: A list of vertices defining the `VertexCollection`.
+        """
+        return self._vertices
+
+    @vertices.setter
+    def vertices(self, vertices):
+        self._vertices = vertices
+
+    @property
+    def edges(self):
+        """[Segment]: A list of segments joining all pairs of vertices.
+        """
+        edges = []
+        vertices = self.vertices
+        for i in range(len(vertices)-1):
+            for j in range(i+1, len(vertices)):
+                edges.append(Segment([vertices[i], vertices[j]]))
+        return edges
+
+    def __str__(self):
+        return "VertexCollection{}".format(self.vertices)
+
+    __repr__ = __str__
+
+    def get_cabinet_projection(self, a=np.arctan(2)):
+        """VertexCollection: The cabinet projection of the current
+        `VertexCollection` onto the xy-plane.
+
+        In a right-handed coordinate system, the cabinet projection projects
+        the point (x,y,z) onto (x-0.5*z*cosa,y-0.5*z*sina,0). Orthogonality
+        between the x- and y-axes is maintained, while the projected z-axis
+        makes an angle of a w.r.t. the x-axis. In addition, the length of the
+        receding lines is cut in half, hence the factor of 0.5.
+
+        The viewing vector is (0.5*z*cosa,0.5*z*sina,z) which is projected onto
+        the origin. The projection lines are all parallel to this vector since
+        this projection is a parallel projection.
+
+        Parameters
+        ----------
+        a : `float`
+            Angle (radians) of projection.
+        """
+        return VertexCollection([vertex.get_cabinet_projection(a) for vertex in\
+                      self.vertices])
+
+    def _find_bounding_box(self):
+        xmin = min([vertex.bounding_box[0][0] for vertex in self.vertices])
+        ymin = min([vertex.bounding_box[1][0] for vertex in self.vertices])
+        zmin = min([vertex.bounding_box[2][0] for vertex in self.vertices])
+        xmax = max([vertex.bounding_box[0][1] for vertex in self.vertices])
+        ymax = max([vertex.bounding_box[1][1] for vertex in self.vertices])
+        zmax = max([vertex.bounding_box[2][1] for vertex in self.vertices])
         self.bounding_box = [(xmin,xmax),(ymin,ymax),(zmin,zmax)]
 
 

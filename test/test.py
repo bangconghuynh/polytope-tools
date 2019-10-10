@@ -4,7 +4,7 @@ import sys, copy
 sys.path.append('..')
 import numpy as np
 from tools.Geometry3D import Point, Vector, Line, Segment, Plane, Contour, Facet, Polyhedron
-from tools.PolyhedronDrawing import Scene
+from tools.PolyhedronDrawing import PolyhedronScene
 from tools.PolytopeTools import construct_convex_hull, polyhedra_from_xyz
 from scipy.spatial import ConvexHull
 import pprint
@@ -33,10 +33,14 @@ import pprint
 #         scene.write_to_tikz('test.{}.tex'.format(str(i)), [(-2.2,2.2),(-2.3,2.1)])
 
 def main():
-    p = polyhedra_from_xyz('H2.ionic.short.g0.xc0.all.transformed.xyz')
-    scene = Scene(p)
-    scene.centre_scene()
-    scene.write_to_tikz('test.xyz.tex')
+    for i in range(1, 11):
+        print("i is:", i)
+        p = polyhedra_from_xyz('AAdash.Egu.elongation.UHF.g{}.xc0.scf.transformed.xyz'.format(str(i)))
+        scene = PolyhedronScene(p)
+        scene.centre_scene()
+        scene.rotate_scene(-np.pi/2, Vector([1,0,0]))
+        scene.rotate_scene(-np.pi/2, Vector([0,1,0]))
+        scene.write_to_tikz('test.xyz.{}.tex'.format(str(i)), vertex_size='0.2pt', bb=[(-1,1),(-1,1)], scale=5)
 
 if __name__ == '__main__':
     main()

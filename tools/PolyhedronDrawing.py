@@ -17,6 +17,140 @@ polyhedron_color_list = ['blue', 'red', 'green', 'DarkViolet', 'DarkCyan',\
 class Scene():
     """A class to contain, manage, and draw multiple polyhedra in a
     three-dimensional scene.
+    """
+
+    def write_to_tikz(self, output, bb=None, vertex_size='1pt', scale=1):
+        """Write the current scene to a standalone TeX file.
+
+        Parameters
+        ----------
+        output : `str`
+            Output file name.
+        bb : list of tuples
+            [(xmin,xmax),(ymin,ymax)]
+        """
+        self.visible_segments,self.hidden_segments =\
+                self._get_visible_hidden_segments(self._thresh)
+        self.visible_vertices,self.hidden_vertices =\
+                self._get_visible_hidden_vertices(self._thresh)
+
+        preamble_str =\
+                """\
+                \\documentclass[tikz]{standalone}
+                \\PassOptionsToPackage{svgnames}{xcolor}
+                \\usepackage{pgfplots}
+                \\pgfplotsset{compat=1.16}
+                \\usetikzlibrary{calc, luamath, positioning}
+
+                \\begin{document}
+                \\begin{tikzpicture}
+                """
+        if bb is not None:
+            (xmin,xmax) = bb[0]
+            (ymin,ymax) = bb[1]
+            preamble_str = preamble_str +\
+                """
+                    \\useasboundingbox ({},{}) rectangle ({},{});
+                """.format(xmin*scale,ymin*scale,xmax*scale,ymax*scale)
+
+        preamble_str = preamble_str +\
+                """
+                    \\scalebox{{ {} }}{{
+                """.format(scale)
+        all_str = preamble_str
+
+        for pi,polyhedron in enumerate(self.polyhedra):
+            color = polyhedron_color_list[pi]
+
+            vertex_labels = []
+            vertices_str =\
+                """
+                    % Coordinate definition\
+                """
+            vertices_str = vertices_str + \
+                """
+                    %%%%%%%%%%%%%%%%
+                    % Polyhedron {}\
+                """.format(pi)
+            vi = 0
+            visible_vertices_str =\
+                """
+                    % Visible vertices\
+                """
+            for vertex_2D in self.visible_vertices_2D[pi]:
+                vi += 1
+                x,y = vertex_2D[0],vertex_2D[1]
+                visible_vertices_str = visible_vertices_str + \
+                """
+                \\node at ({},{})\
+                    [circle, fill = {}, very thin,\
+                     draw = black, inner sep={}]{{}};
+                """.format(x, y, color, vertex_size)
+
+
+            hidden_vertices_str =\
+                """
+                    % Hidden vertices\
+                """
+            for vertex_2D in self.hidden_vertices_2D[pi]:
+                vi += 1
+                x,y = vertex_2D[0],vertex_2D[1]
+                hidden_vertices_str = hidden_vertices_str + \
+                """
+                \\node at ({},{})\
+                    [circle, fill = {}!50!white, very thin,\
+                     draw = black!50!white, inner sep={}]{{}};
+                """.format(x, y, color, vertex_size)
+            hidden_vertices_str = hidden_vertices_str + "\n"
+
+            visible_str =\
+                """
+                    % Visible segments\
+                """
+            for segment_2D in self.visible_segments_2D[pi]:
+                xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
+                xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
+                visible_str = visible_str + \
+                """
+                    \\draw[{}] ({},{}) -- ({},{});\
+                """.format(color, xstart, ystart, xend, yend)
+            visible_str = visible_str + "\n"
+
+            hidden_str =\
+                """
+                    % Hidden segments\
+                """
+            for segment_2D in self.hidden_segments_2D[pi]:
+                xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
+                xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
+                hidden_str = hidden_str + \
+                """
+                    \\draw[{}, opacity=0.25] ({},{}) -- ({},{});\
+                """.format(color, xstart, ystart, xend, yend)
+            hidden_str = hidden_str + "\n"
+
+            all_str = all_str +\
+                    hidden_str +\
+                    visible_str +\
+                    hidden_vertices_str +\
+                    visible_vertices_str
+
+        end_str =\
+                """
+                    }
+                \\end{tikzpicture}
+                \\end{document}
+                """
+
+        all_str = all_str + end_str
+
+        with open(output, 'w') as f:
+            f.write(textwrap.dedent(all_str))
+
+
+class PolyhedronScene(Scene):
+    """A class to contain, manage, and draw multiple polyhedra in a
+    three-dimensional scene.
 
     Parameters
     ----------
@@ -28,8 +162,9 @@ class Scene():
         Threshold for various comparisons.
     """
 
-    def __init__(self, polyhedra, a=np.arctan(2), thresh=ZERO_TOLERANCE):
+    def __init__(self, polyhedra = [], vertexcollections = [], a=np.arctan(2), thresh=ZERO_TOLERANCE):
         self.polyhedra = polyhedra
+        self.vertexcollections = vertexcollections
         self.cabinet_angle = a
         self._thresh = thresh
 
@@ -46,18 +181,37 @@ class Scene():
         self._polyhedra = polyhedra
 
     @property
+    def vertexcollections(self):
+        """[VertexCollection]: A list of all non-polyhedron vertex collections
+        in the scene.
+        """
+        return self._vertexcollections
+
+    @vertexcollections.setter
+    def vertexcollections(self, vertexcollections):
+        for vertexcollection in polyhedravertexcollections
+            assert isinstance(vertexcollection, VertexCollection)
+        self._vertexcollections = vertexcollections
+
+    @property
     def all_vertices(self):
         """[Point]: A list of all vertices in the scene.
         """
-        return [vertex for polyhedron in self.polyhedra\
-                     for vertex in polyhedron.vertices]
+        from_polyhedra = [vertex for polyhedron in self.polyhedra\
+                          for vertex in polyhedron.vertices]
+        from_collections = [vertex for collection in self.vertexcollections\
+                            for vertex in collection.vertices]
+        return from_polyhedra + from_collections
 
     @property
     def all_edges(self):
         """[Segment]: A list of all edges in the scene.
         """
-        return [edge for polyhedron in self.polyhedra\
-                     for edge in polyhedron.edges]
+        from_polyhedra = [edge for polyhedron in self.polyhedra\
+                          for edge in polyhedron.edges]
+        from_collections = [edge for collection in self.vertexcollections\
+                            for edge in collection.edges]
+        return from_polyhedra + from_collections
 
     @property
     def all_facets(self):
@@ -226,7 +380,7 @@ class Scene():
         # However, we store all segments in the full object space.
         visible = []
         hidden = []
-        for polyhedron in self.polyhedra:
+        for polyhedron in self.polyhedra + self.vertexcollections:
             visible.append([])
             hidden.append([])
             for edge in polyhedron.edges:
@@ -315,18 +469,20 @@ class Scene():
                                     .get_cabinet_projection(self.cabinet_angle)
                             n,J_points,segments_2D_hidden,segments_2D_visible =\
                                     back_test_segment_2D.intersects_facet\
-                                            (test_facet_2D, anchor_2D)
+                                            (test_facet_2D, anchor_2D, thresh)
                             # We need to convert the 2D information back to 3D data.
                             # We need 3D data for further testing with other facets.
                             # For parallel projection, mu is the same in both 3D
                             # and 2D.
-                            for (segments_2D, mu_start, mu_end) in segments_2D_hidden:
+                            for (segments_2D, mu_start, mu_end) in\
+                                    segments_2D_hidden:
                                 A = back_test_segment.get_fraction_of_segment\
                                             (mu_start, anchor)[0]
                                 B = back_test_segment.get_fraction_of_segment\
                                             (mu_end, anchor)[0]
                                 updated_segments_hidden.append(Segment([A,B]))
-                            for (segments_2D, mu_start, mu_end) in segments_2D_visible:
+                            for (segments_2D, mu_start, mu_end) in\
+                                    segments_2D_visible:
                                 A = back_test_segment.get_fraction_of_segment\
                                             (mu_start, anchor)[0]
                                 B = back_test_segment.get_fraction_of_segment\
@@ -357,7 +513,7 @@ class Scene():
         # However, we store all vertices in the full object space.
         visible = []
         hidden = []
-        for polyhedron in self.polyhedra:
+        for polyhedron in self.polyhedra + self.vertexcollections:
             visible.append([])
             hidden.append([])
             for vertex in polyhedron.vertices:
@@ -418,127 +574,3 @@ class Scene():
                     visible[-1].append(vertex)
 
         return visible,hidden
-
-    def write_to_tikz(self, output, bb=None):
-        """Write the current scene to a standalone TeX file.
-
-        Parameters
-        ----------
-        output : `str`
-            Output file name.
-        bb : list of tuples
-            [(xmin,xmax),(ymin,ymax)]
-        """
-        self.visible_segments,self.hidden_segments =\
-                self._get_visible_hidden_segments(self._thresh)
-        self.visible_vertices,self.hidden_vertices =\
-                self._get_visible_hidden_vertices(self._thresh)
-
-        preamble_str =\
-                """\
-                \\documentclass[tikz]{standalone}
-                \\PassOptionsToPackage{svgnames}{xcolor}
-                \\usepackage{pgfplots}
-                \\pgfplotsset{compat=1.16}
-                \\usetikzlibrary{calc, luamath, positioning}
-
-                \\begin{document}
-                \\begin{tikzpicture}
-                """
-        if bb is not None:
-            (xmin,xmax) = bb[0]
-            (ymin,ymax) = bb[1]
-            preamble_str = preamble_str +\
-                """
-                    \\useasboundingbox ({},{}) rectangle ({},{});
-                """.format(xmin,ymin,xmax,ymax)
-
-        all_str = preamble_str
-
-        for pi,polyhedron in enumerate(self.polyhedra):
-            color = polyhedron_color_list[pi]
-
-            vertex_labels = []
-            vertices_str =\
-                """
-                    % Coordinate definition\
-                """
-            vertices_str = vertices_str + \
-                """
-                    %%%%%%%%%%%%%%%%
-                    % Polyhedron {}\
-                """.format(pi)
-            vi = 0
-            visible_vertices_str =\
-                """
-                    % Visible vertices\
-                """
-            for vertex_2D in self.visible_vertices_2D[pi]:
-                vi += 1
-                x,y = vertex_2D[0],vertex_2D[1]
-                visible_vertices_str = visible_vertices_str + \
-                """
-                \\node at ({},{})\
-                    [circle, fill = {}, draw = black, inner sep=1pt]{{}};
-                """.format(x, y, color)
-
-
-            hidden_vertices_str =\
-                """
-                    % Hidden vertices\
-                """
-            for vertex_2D in self.hidden_vertices_2D[pi]:
-                vi += 1
-                x,y = vertex_2D[0],vertex_2D[1]
-                hidden_vertices_str = hidden_vertices_str + \
-                """
-                \\node at ({},{})\
-                    [circle, fill = {}!50!white, draw = black!50!white,\
-                    inner sep=1pt]{{}};
-                """.format(x, y, color)
-            hidden_vertices_str = hidden_vertices_str + "\n"
-
-            visible_str =\
-                """
-                    % Visible segments\
-                """
-            for segment_2D in self.visible_segments_2D[pi]:
-                xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
-                xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
-                visible_str = visible_str + \
-                """
-                    \\draw[{}] ({},{}) -- ({},{});\
-                """.format(color, xstart, ystart, xend, yend)
-            visible_str = visible_str + "\n"
-
-            hidden_str =\
-                """
-                    % Hidden segments\
-                """
-            for segment_2D in self.hidden_segments_2D[pi]:
-                xstart,ystart = segment_2D.endpoints[0][0],segment_2D.endpoints[0][1]
-                xend,yend = segment_2D.endpoints[1][0],segment_2D.endpoints[1][1]
-                hidden_str = hidden_str + \
-                """
-                    \\draw[{}, opacity=0.25] ({},{}) -- ({},{});\
-                """.format(color, xstart, ystart, xend, yend)
-            hidden_str = hidden_str + "\n"
-
-            all_str = all_str +\
-                    hidden_str +\
-                    visible_str +\
-                    hidden_vertices_str +\
-                    visible_vertices_str
-
-        end_str =\
-                """
-                \\end{tikzpicture}
-                \\end{document}
-                """
-
-        all_str = all_str + end_str
-
-        with open(output, 'w') as f:
-            f.write(textwrap.dedent(all_str))
-
-
