@@ -34,6 +34,8 @@ import sphinx_rtd_theme
 extensions = [\
         'sphinx.ext.autodoc',\
         'sphinx.ext.napoleon',\
+        'sphinx.ext.intersphinx',\
+        'sphinx_autodoc_typehints',\
         'sphinx.ext.coverage',\
         'sphinx.ext.autosummary',\
         'sphinx_rtd_theme'
@@ -46,7 +48,7 @@ templates_path = ['_templates']
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
-
+highlight_language = 'python3'
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -64,8 +66,14 @@ html_static_path = []
 
 autodoc_member_order = 'bysource'
 autodoc_default_options = {'members': True}
+autoclass_content = 'both'
 
 # -- Options for autosummary -------------------------------------------------
 
 autosummary_generate = True
 autosummary_imported_members = True
+
+# -- Options for intersphinx -------------------------------------------------
+
+intersphinx_mapping = {'python': ('http://docs.python.org/3/', None),
+                       'numpy': ('http://docs.scipy.org/doc/numpy/', None)}

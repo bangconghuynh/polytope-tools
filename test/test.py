@@ -3,9 +3,9 @@
 import sys, copy
 sys.path.append('..')
 import numpy as np
-from tools.Geometry3D import Point, Vector, Line, Segment, Plane, Contour, Facet, Polyhedron
-from tools.PolyhedronDrawing import PolyhedronScene
-from tools.PolytopeTools import construct_convex_hull, polyhedra_from_xyz
+from polytopetools.Geometry3D import Point, Vector, Line, Segment, Plane, Contour, Facet, Polyhedron
+from polytopetools.PolyhedronDrawing import Scene
+from polytopetools.PolytopeTools import construct_convex_hull, polyhedra_from_xyz
 from scipy.spatial import ConvexHull
 import pprint
 
@@ -35,8 +35,8 @@ import pprint
 def main():
     for i in range(1, 11):
         print("i is:", i)
-        p = polyhedra_from_xyz('AAdash.Egu.elongation.UHF.g{}.xc0.scf.transformed.xyz'.format(str(i)))
-        scene = PolyhedronScene(p)
+        p,v,o = polyhedra_from_xyz('AAdash.Egu.elongation.UHF.456.g{}.xc0.noci.transformed.xyz'.format(str(i)), True)
+        scene = Scene(p,v,o)
         scene.centre_scene()
         scene.rotate_scene(-np.pi/2, Vector([1,0,0]))
         scene.rotate_scene(-np.pi/2, Vector([0,1,0]))

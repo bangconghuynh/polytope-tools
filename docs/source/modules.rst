@@ -6,5 +6,5 @@ API Reference
 .. autosummary::
     :toctree: _autosummary
 
-    tools.Geometry3D
-    tools.PolyhedronDrawing
+    polytopetools.Geometry3D
+    polytopetools.PolyhedronDrawing
