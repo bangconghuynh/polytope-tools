@@ -35,7 +35,7 @@ import pprint
 def main():
     for i in range(1, 11):
         print("i is:", i)
-        p,v,o = polyhedra_from_xyz('AAdash.Egu.elongation.UHF.456.g{}.xc0.noci.transformed.xyz'.format(str(i)), True)
+        p,v,o = polyhedra_from_xyz('AAdash.Egu.elongation.UHF.g{}.xc0.scf.transformed.xyz'.format(str(i)), True)
         scene = Scene(p,v,o)
         scene.centre_scene()
         scene.rotate_scene(-np.pi/2, Vector([1,0,0]))

@@ -38,6 +38,8 @@ extensions = [\
         'sphinx_autodoc_typehints',\
         'sphinx.ext.coverage',\
         'sphinx.ext.autosummary',\
+        'sphinxcontrib.bibtex',\
+        'sphinx.ext.inheritance_diagram',\
         'sphinx_rtd_theme'
 ]
 
