@@ -8,4 +8,4 @@ API Reference
 
     polytopetools.Geometry3D
     polytopetools.ConstructionTools
-    polytopetools.PolyhedronDrawing
+    polytopetools.PolyhedronDrawingTools
