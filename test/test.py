@@ -5,7 +5,7 @@ sys.path.append('..')
 import numpy as np
 from polytopetools.Geometry3D import Point, Vector, Line, Segment, Plane, Contour, Facet, Polyhedron
 from polytopetools.PolyhedronDrawing import Scene
-from polytopetools.PolytopeTools import construct_convex_hull, polyhedra_from_xyz
+from polytopetools.ConstructionTools import construct_convex_hull, polyhedra_from_xyz
 from scipy.spatial import ConvexHull
 import pprint
 

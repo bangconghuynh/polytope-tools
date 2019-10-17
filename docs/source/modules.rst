@@ -7,4 +7,5 @@ API Reference
     :toctree: _autosummary
 
     polytopetools.Geometry3D
+    polytopetools.ConstructionTools
     polytopetools.PolyhedronDrawing

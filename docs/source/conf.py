@@ -73,7 +73,7 @@ autoclass_content = 'both'
 # -- Options for autosummary -------------------------------------------------
 
 autosummary_generate = True
-autosummary_imported_members = True
+autosummary_imported_members = False
 
 # -- Options for intersphinx -------------------------------------------------
 

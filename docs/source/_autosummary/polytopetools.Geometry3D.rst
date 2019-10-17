@@ -27,7 +27,6 @@ polytopetools.Geometry3D
       Plane
       Point
       Polyhedron
-      Rotation
       Segment
       Vector
       VertexCollection
